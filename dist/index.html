@@ -4,17 +4,23 @@
     <!-- Fix paths for file:// protocol compatibility -->
     <script>
       (function() {
-        // Fix paths if opened via file:// protocol
+        // Fix paths if opened via file:// protocol (for local testing)
         if (window.location.protocol === 'file:') {
           const fixPath = (attr) => {
+            // Fix all elements with absolute paths
             document.querySelectorAll('[' + attr + '^="/"]').forEach(el => {
               const currentPath = el.getAttribute(attr);
               if (currentPath && currentPath.startsWith('/')) {
+                // Convert absolute to relative path
                 el.setAttribute(attr, '.' + currentPath);
               }
             });
+            // Also fix relative paths that might have been converted
+            document.querySelectorAll('[' + attr + '^="./"]').forEach(el => {
+              // Already relative, keep as is
+            });
           };
-          // Fix all link and script paths
+          // Fix all link and script paths before they load
           fixPath('href');
           fixPath('src');
           fixPath('content');
@@ -31,11 +37,11 @@
     <meta property="og:title" content="parkflow-sync" />
     <meta property="og:description" content="Park Flow" />
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="./favicon.svg" />
+    <meta property="og:image" content="/favicon.svg" />
 
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@parkflow" />
-    <meta name="twitter:image" content="./favicon.svg" />
+    <meta name="twitter:image" content="/favicon.svg" />
     
     <!-- Preconnect to external domains for faster loading -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -45,7 +51,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     
     <!-- Favicon -->
-    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     
     <!-- Critical CSS inline for instant rendering -->
     <style>
@@ -79,19 +85,19 @@
       }
     </style>
     <!-- Preload critical resources for instant loading -->
-    <link rel="preload" href="./assets/vendor-O_Wxd0qj.js" as="script" />
-    <link rel="preload" href="./assets/ui-DJO2kEUD.js" as="script" />
-    <link rel="preload" href="./assets/utils-BPZBwj5v.js" as="script" />
-    <link rel="preload" href="./assets/router-DjmRium3.js" as="script" />
-    <link rel="preload" href="./assets/index-Cveaa6mb.css" as="style" />
-    <link rel="modulepreload" href="./assets/index-D6HH3bW9.js" />
+    <link rel="preload" href="/assets/vendor-O_Wxd0qj.js" as="script" />
+    <link rel="preload" href="/assets/ui-DJO2kEUD.js" as="script" />
+    <link rel="preload" href="/assets/utils-BPZBwj5v.js" as="script" />
+    <link rel="preload" href="/assets/router-DjmRium3.js" as="script" />
+    <link rel="preload" href="/assets/index-Cveaa6mb.css" as="style" />
+    <link rel="modulepreload" href="/assets/index-D6HH3bW9.js" />
 
-    <script type="module" crossorigin src="./assets/index-D6HH3bW9.js"></script>
-    <link rel="modulepreload" crossorigin href="./assets/vendor-O_Wxd0qj.js">
-    <link rel="modulepreload" crossorigin href="./assets/ui-DJO2kEUD.js">
-    <link rel="modulepreload" crossorigin href="./assets/utils-BPZBwj5v.js">
-    <link rel="modulepreload" crossorigin href="./assets/router-DjmRium3.js">
-    <link rel="stylesheet" crossorigin href="./assets/index-Cveaa6mb.css">
+    <script type="module" crossorigin src="/assets/index-D6HH3bW9.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/vendor-O_Wxd0qj.js">
+    <link rel="modulepreload" crossorigin href="/assets/ui-DJO2kEUD.js">
+    <link rel="modulepreload" crossorigin href="/assets/utils-BPZBwj5v.js">
+    <link rel="modulepreload" crossorigin href="/assets/router-DjmRium3.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-Cveaa6mb.css">
   </head>
 
   <body>

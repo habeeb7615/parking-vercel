@@ -18,17 +18,13 @@ console.log('🚀 Optimizing build for instant static loading...');
 const indexPath = path.join(__dirname, 'dist', 'index.html');
 let htmlContent = fs.readFileSync(indexPath, 'utf8');
 
-// Convert absolute paths to relative paths for compatibility with file:// and http:// protocols
-// This fixes CORS errors when opening HTML directly from file system
-console.log('📝 Converting absolute paths to relative paths...');
-htmlContent = htmlContent.replace(/href="\/assets\//g, 'href="./assets/');
-htmlContent = htmlContent.replace(/src="\/assets\//g, 'src="./assets/');
-htmlContent = htmlContent.replace(/href="\/favicon\./g, 'href="./favicon.');
-htmlContent = htmlContent.replace(/content="\/favicon\./g, 'content="./favicon.');
+// Keep absolute paths for deployment (Vercel works best with absolute paths)
+// Runtime script will convert to relative paths only for file:// protocol
+console.log('📝 Keeping absolute paths for deployment compatibility...');
 
-// Extract actual asset names from the HTML (now with relative paths)
-const assetMatches = htmlContent.match(/href="\.\/assets\/([^"]+)"/g) || [];
-const scriptMatches = htmlContent.match(/src="\.\/assets\/([^"]+\.js)"/g) || [];
+// Extract actual asset names from the HTML (using absolute paths)
+const assetMatches = htmlContent.match(/href="\/assets\/([^"]+)"/g) || [];
+const scriptMatches = htmlContent.match(/src="\/assets\/([^"]+\.js)"/g) || [];
 
 // Create preload hints dynamically
 let preloadHints = '\n    <!-- Preload critical resources for instant loading -->\n';
@@ -52,21 +48,28 @@ htmlContent = htmlContent.replace(
 );
 
 // Add path fixing script (runs first, before any other scripts)
+// This converts absolute paths to relative paths ONLY for file:// protocol
 const pathFixScript = `
     <!-- Fix paths for file:// protocol compatibility -->
     <script>
       (function() {
-        // Fix paths if opened via file:// protocol
+        // Fix paths if opened via file:// protocol (for local testing)
         if (window.location.protocol === 'file:') {
           const fixPath = (attr) => {
+            // Fix all elements with absolute paths
             document.querySelectorAll('[' + attr + '^="/"]').forEach(el => {
               const currentPath = el.getAttribute(attr);
               if (currentPath && currentPath.startsWith('/')) {
+                // Convert absolute to relative path
                 el.setAttribute(attr, '.' + currentPath);
               }
             });
+            // Also fix relative paths that might have been converted
+            document.querySelectorAll('[' + attr + '^="./"]').forEach(el => {
+              // Already relative, keep as is
+            });
           };
-          // Fix all link and script paths
+          // Fix all link and script paths before they load
           fixPath('href');
           fixPath('src');
           fixPath('content');
@@ -135,7 +138,8 @@ fs.writeFileSync(indexPath, htmlContent);
 
 console.log('✅ Build optimized for instant static loading!');
 console.log('📦 Optimizations applied:');
-console.log('   - Absolute paths converted to relative paths (works on deployment)');
+console.log('   - Absolute paths kept for deployment (Vercel compatible)');
+console.log('   - Runtime path conversion for file:// protocol (local testing)');
 console.log('   - Resource preloading');
 console.log('   - Critical CSS inlined');
 console.log('   - Service Worker caching');
@@ -145,4 +149,4 @@ console.log('');
 console.log('🚀 Your site will now load like a static site!');
 console.log('💡 For local testing, use: npm run preview (or any local server)');
 console.log('   Note: ES modules require http:// or https:// protocol, not file://');
-console.log('   The build is optimized for deployment on Vercel or any web server!');
+console.log('   The build is optimized for deployment on Vercel with absolute paths!');
