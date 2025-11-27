@@ -1,6 +1,27 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <!-- Fix paths for file:// protocol compatibility -->
+    <script>
+      (function() {
+        // Fix paths if opened via file:// protocol
+        if (window.location.protocol === 'file:') {
+          const fixPath = (attr) => {
+            document.querySelectorAll('[' + attr + '^="/"]').forEach(el => {
+              const currentPath = el.getAttribute(attr);
+              if (currentPath && currentPath.startsWith('/')) {
+                el.setAttribute(attr, '.' + currentPath);
+              }
+            });
+          };
+          // Fix all link and script paths
+          fixPath('href');
+          fixPath('src');
+          fixPath('content');
+        }
+      })();
+    </script>
+
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>parkflow-sync</title>
@@ -10,11 +31,11 @@
     <meta property="og:title" content="parkflow-sync" />
     <meta property="og:description" content="Park Flow" />
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="/favicon.svg" />
+    <meta property="og:image" content="./favicon.svg" />
 
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@parkflow" />
-    <meta name="twitter:image" content="/favicon.svg" />
+    <meta name="twitter:image" content="./favicon.svg" />
     
     <!-- Preconnect to external domains for faster loading -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -24,7 +45,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     
     <!-- Favicon -->
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     
     <!-- Critical CSS inline for instant rendering -->
     <style>
@@ -57,12 +78,20 @@
         100% { transform: translate(-50%, -50%) rotate(360deg); }
       }
     </style>
-    <script type="module" crossorigin src="/assets/index-D6HH3bW9.js"></script>
-    <link rel="modulepreload" crossorigin href="/assets/vendor-O_Wxd0qj.js">
-    <link rel="modulepreload" crossorigin href="/assets/ui-DJO2kEUD.js">
-    <link rel="modulepreload" crossorigin href="/assets/utils-BPZBwj5v.js">
-    <link rel="modulepreload" crossorigin href="/assets/router-DjmRium3.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-Cveaa6mb.css">
+    <!-- Preload critical resources for instant loading -->
+    <link rel="preload" href="./assets/vendor-O_Wxd0qj.js" as="script" />
+    <link rel="preload" href="./assets/ui-DJO2kEUD.js" as="script" />
+    <link rel="preload" href="./assets/utils-BPZBwj5v.js" as="script" />
+    <link rel="preload" href="./assets/router-DjmRium3.js" as="script" />
+    <link rel="preload" href="./assets/index-Cveaa6mb.css" as="style" />
+    <link rel="modulepreload" href="./assets/index-D6HH3bW9.js" />
+
+    <script type="module" crossorigin src="./assets/index-D6HH3bW9.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/vendor-O_Wxd0qj.js">
+    <link rel="modulepreload" crossorigin href="./assets/ui-DJO2kEUD.js">
+    <link rel="modulepreload" crossorigin href="./assets/utils-BPZBwj5v.js">
+    <link rel="modulepreload" crossorigin href="./assets/router-DjmRium3.js">
+    <link rel="stylesheet" crossorigin href="./assets/index-Cveaa6mb.css">
   </head>
 
   <body>
@@ -74,8 +103,8 @@
     
     <!-- Mobile browser refresh fallback -->
     <script>
-      // Handle mobile browser refresh issues
-      if (window.location.pathname !== '/' && !window.location.pathname.startsWith('/dashboard')) {
+      // Handle mobile browser refresh issues (skip on file:// protocol)
+      if (window.location.protocol !== 'file:' && window.location.pathname !== '/' && !window.location.pathname.startsWith('/dashboard')) {
         // If user is on a deep route and refreshes, redirect to dashboard
         if (window.location.pathname.includes('dashboard')) {
           window.location.href = '/dashboard';
@@ -96,5 +125,31 @@
       }
       console.log('Service Worker disabled for production stability');
     </script>
+  
+    <!-- Performance optimization script -->
+    <script>
+      // Remove loading spinner when React app loads
+      window.addEventListener('DOMContentLoaded', () => {
+        const spinner = document.querySelector('.loading-spinner');
+        if (spinner) {
+          setTimeout(() => {
+            spinner.style.opacity = '0';
+            setTimeout(() => spinner.remove(), 300);
+          }, 100);
+        }
+      });
+      
+      // Preload critical routes (only on http/https, not file://)
+      if (window.location.protocol !== 'file:') {
+        const criticalRoutes = ['/dashboard', '/login', '/register'];
+        criticalRoutes.forEach(route => {
+          const link = document.createElement('link');
+          link.rel = 'prefetch';
+          link.href = route;
+          document.head.appendChild(link);
+        });
+      }
+    </script>
+
   </body>
 </html>

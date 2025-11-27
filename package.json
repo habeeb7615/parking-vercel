@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node optimize-build.js",
     "build:dev": "vite build --mode development && node optimize-build.js",
     "build:static": "vite build && node optimize-build.js",
     "lint": "eslint .",
