@@ -21,13 +21,8 @@ export default defineConfig(({ mode }) => ({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
-    minify: false, // Disable minification to prevent syntax errors
-    // terserOptions: {
-    //   compress: {
-    //     drop_console: false, // Keep console logs for debugging
-    //     drop_debugger: true,
-    //   },
-    // },
+    emptyOutDir: true, // Clean dist folder before build
+    minify: 'esbuild', // Use esbuild minification (safer and faster than terser)
     rollupOptions: {
       output: {
         manualChunks: {
@@ -41,12 +36,14 @@ export default defineConfig(({ mode }) => ({
         assetFileNames: 'assets/[name]-[hash].[ext]',
       },
     },
-    // Enable source maps for debugging
+    // Enable source maps for debugging (disabled for production)
     sourcemap: false,
     // Optimize for static serving
     target: 'es2020',
     cssCodeSplit: true,
     reportCompressedSize: false,
+    // Chunk size warnings
+    chunkSizeWarningLimit: 1000,
   },
   // Ensure proper handling of client-side routing
   preview: {
