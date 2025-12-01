@@ -31,8 +31,7 @@ export default defineConfig(({ mode }) => ({
     assetsDir: 'assets',
     emptyOutDir: true, // Ensure clean builds
     charset: 'utf8', // Ensure UTF-8 encoding
-    minify: false, // Temporarily disable minification to debug encoding issue
-    // Will re-enable after fixing the issue
+    minify: 'esbuild', // Use esbuild for reliable minification
     rollupOptions: {
       output: {
         manualChunks: {
