@@ -29,6 +29,7 @@ export default defineConfig(({ mode }) => ({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
+    emptyOutDir: true, // Ensure clean builds
     minify: mode === 'production' ? 'terser' : false, // Use terser for better compatibility
     terserOptions: mode === 'production' ? {
       compress: {
@@ -38,6 +39,7 @@ export default defineConfig(({ mode }) => ({
       },
       format: {
         comments: false, // Remove comments
+        ascii_only: true, // Ensure ASCII-only output to avoid encoding issues
       },
     } : undefined,
     rollupOptions: {
