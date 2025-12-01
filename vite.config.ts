@@ -31,19 +31,8 @@ export default defineConfig(({ mode }) => ({
     assetsDir: 'assets',
     emptyOutDir: true, // Ensure clean builds
     charset: 'utf8', // Ensure UTF-8 encoding
-    minify: mode === 'production' ? 'terser' : false, // Use terser for better compatibility
-    terserOptions: mode === 'production' ? {
-      compress: {
-        drop_console: true, // Remove console logs in production
-        drop_debugger: true,
-        pure_funcs: ['console.log', 'console.info', 'console.debug'], // Remove specific console methods
-      },
-      format: {
-        comments: false, // Remove comments
-        ascii_only: true, // Ensure ASCII-only output to avoid encoding issues
-        preserve_annotations: false,
-      },
-    } : undefined,
+    minify: mode === 'production' ? 'esbuild' : false, // Use esbuild for better encoding handling
+    // esbuild handles encoding automatically and is more reliable
     rollupOptions: {
       output: {
         manualChunks: {
