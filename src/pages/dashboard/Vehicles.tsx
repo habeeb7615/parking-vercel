@@ -26,14 +26,11 @@ import { ContractorAPI } from "@/services/contractorApi";
 import { AttendantAPI } from "@/services/attendantApi";
 import { LocationAPI } from "@/services/locationApi";
 
-type ContractorMap = { [contractorId: string]: string };
-
 export default function Vehicles() {
   const { profile } = useAuth();
   const { toast } = useToast();
   
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [contractors, setContractors] = useState<ContractorMap>({});
   const [subscriptionBlocked, setSubscriptionBlocked] = useState(false);
   const [locations, setLocations] = useState<any[]>([]);
   const [showAddVehicle, setShowAddVehicle] = useState(false);
@@ -284,7 +281,7 @@ export default function Vehicles() {
                   
                   {!isAttendant && (
                     <div className="text-gray-600 truncate">
-                      {vehicle.parking_locations?.contractors?.company_name || 'Unknown Contractor'}
+                      {vehicle.contractors?.company_name || vehicle.parking_locations?.contractors?.company_name || 'Unknown Contractor'}
                     </div>
                   )}
                   
@@ -378,7 +375,7 @@ export default function Vehicles() {
                   {!isAttendant && (
                     <div className="flex items-center space-x-1">
                       <span className="text-muted-foreground">Contractor:</span>
-                      <span className="truncate">{vehicle.parking_locations?.contractors?.company_name || 'Unknown'}</span>
+                      <span className="truncate">{vehicle.contractors?.company_name || vehicle.parking_locations?.contractors?.company_name || 'Unknown'}</span>
                     </div>
                   )}
                   {!isAttendant && (
@@ -438,12 +435,6 @@ export default function Vehicles() {
         if (isSuperAdmin) {
           const all = await VehicleAPI.getAllVehicles();
           setVehicles(all);
-          const contractorsData = await ContractorAPI.getAllContractors();
-          const map: ContractorMap = {};
-          contractorsData.forEach((c) => {
-            map[c.id] = c.company_name || '';
-          });
-          setContractors(map);
         } else if (isAttendant) {
           // For attendants, load their vehicles
           const all = await VehicleAPI.getAttendantVehicles();
@@ -470,9 +461,31 @@ export default function Vehicles() {
                   const contractor = await ContractorAPI.getContractorById(location.contractor_id);
                   
                   if (contractor) {
+                    // Parse rates if they're JSON strings
+                    let rates2w, rates4w;
+                    try {
+                      rates2w = typeof contractor.rates_2wheeler === 'string' 
+                        ? JSON.parse(contractor.rates_2wheeler) 
+                        : contractor.rates_2wheeler;
+                      rates4w = typeof contractor.rates_4wheeler === 'string' 
+                        ? JSON.parse(contractor.rates_4wheeler) 
+                        : contractor.rates_4wheeler;
+                    } catch (e) {
+                      console.error('Error parsing rates:', e);
+                      rates2w = contractor.rates_2wheeler;
+                      rates4w = contractor.rates_4wheeler;
+                    }
+                    
+                    console.log('Vehicles: Setting contractor rates for attendant', { 
+                      rates2w, 
+                      rates4w,
+                      original2w: contractor.rates_2wheeler,
+                      original4w: contractor.rates_4wheeler
+                    });
+                    
                     setContractorRates({
-                      rates_2wheeler: contractor.rates_2wheeler,
-                      rates_4wheeler: contractor.rates_4wheeler
+                      rates_2wheeler: rates2w,
+                      rates_4wheeler: rates4w
                     });
                   }
                 }
@@ -491,6 +504,34 @@ export default function Vehicles() {
               if (contractorData && contractorData.id) {
                 const all = await VehicleAPI.getContractorVehicles(contractorData.id);
                 setVehicles(all);
+                
+                // Set contractor rates for checkout calculation
+                // Parse rates if they're JSON strings
+                let rates2w, rates4w;
+                try {
+                  rates2w = typeof contractorData.rates_2wheeler === 'string' 
+                    ? JSON.parse(contractorData.rates_2wheeler) 
+                    : contractorData.rates_2wheeler;
+                  rates4w = typeof contractorData.rates_4wheeler === 'string' 
+                    ? JSON.parse(contractorData.rates_4wheeler) 
+                    : contractorData.rates_4wheeler;
+                } catch (e) {
+                  console.error('Error parsing rates:', e);
+                  rates2w = contractorData.rates_2wheeler;
+                  rates4w = contractorData.rates_4wheeler;
+                }
+                
+                console.log('Vehicles: Setting contractor rates for contractor', { 
+                  rates2w, 
+                  rates4w,
+                  original2w: contractorData.rates_2wheeler,
+                  original4w: contractorData.rates_4wheeler
+                });
+                
+                setContractorRates({
+                  rates_2wheeler: rates2w,
+                  rates_4wheeler: rates4w
+                });
                 
                 // Load contractor's locations
                 const locationsData = await ContractorAPI.getContractorLocations(contractorData.id);
@@ -519,8 +560,13 @@ export default function Vehicles() {
           setVehicles([]);
           setLocations([]);
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error loading vehicles:', error);
+        toast({
+          variant: "destructive",
+          title: "Error Loading Vehicles",
+          description: error?.message || "Failed to load vehicles. Please try again later.",
+        });
         setVehicles([]);
         setLocations([]);
       } finally {
@@ -547,25 +593,62 @@ export default function Vehicles() {
     const totalVehicles = vehicles.length;
     const currentlyParked = vehicles.filter(v => v.check_out_time === null).length;
     const checkedOut = vehicles.filter(v => v.check_out_time !== null);
-    const totalRevenue = vehicles.reduce((sum, v) => sum + (v.payment_amount || 0), 0);
+    
+    // Calculate total revenue - ensure payment_amount is a valid number
+    const totalRevenue = vehicles.reduce((sum, v) => {
+      if (!v.payment_amount) return sum;
+      // Convert to number if it's a string, handle null/undefined
+      let amount: number;
+      if (typeof v.payment_amount === 'number') {
+        amount = v.payment_amount;
+      } else if (typeof v.payment_amount === 'string') {
+        const parsed = parseFloat(v.payment_amount);
+        amount = isNaN(parsed) ? 0 : parsed;
+      } else {
+        amount = 0;
+      }
+      // Only add valid, positive amounts
+      return sum + (amount > 0 && isFinite(amount) ? amount : 0);
+    }, 0);
     
     // Calculate average duration for checked out vehicles
     let averageDuration = 0;
     if (checkedOut.length > 0) {
+      let validDurations = 0;
       const totalDuration = checkedOut.reduce((sum, v) => {
         if (v.check_in_time && v.check_out_time) {
-          const duration = new Date(v.check_out_time).getTime() - new Date(v.check_in_time).getTime();
-          return sum + duration;
+          try {
+            const checkIn = new Date(v.check_in_time);
+            const checkOut = new Date(v.check_out_time);
+            
+            // Validate dates
+            if (isNaN(checkIn.getTime()) || isNaN(checkOut.getTime())) {
+              return sum;
+            }
+            
+            const duration = checkOut.getTime() - checkIn.getTime();
+            
+            // Only count positive durations (check_out should be after check_in)
+            if (duration > 0) {
+              validDurations++;
+              return sum + duration;
+            }
+          } catch (error) {
+            console.error('Error calculating duration for vehicle:', v.id, error);
+          }
         }
         return sum;
       }, 0);
-      averageDuration = totalDuration / checkedOut.length / (1000 * 60 * 60); // Convert to hours
+      
+      if (validDurations > 0) {
+        averageDuration = totalDuration / validDurations / (1000 * 60 * 60); // Convert to hours
+      }
     }
 
     return {
       totalVehicles,
       currentlyParked,
-      averageDuration: Math.round(averageDuration * 10) / 10,
+      averageDuration: averageDuration > 0 ? Math.round(averageDuration * 10) / 10 : 0,
       totalRevenue: Math.round(totalRevenue * 100) / 100
     };
   }, [vehicles]);
@@ -575,22 +658,61 @@ export default function Vehicles() {
     return vehicle.check_out_time === null ? 'checked_in' : 'checked_out';
   };
 
-  const filterVehicles = (vehicleList: Vehicle[]) => {
-    if (!searchQuery.trim()) return vehicleList;
-    
-    const query = searchQuery.toLowerCase();
-    return vehicleList.filter(vehicle => 
-      vehicle.plate_number.toLowerCase().includes(query) ||
-      vehicle.parking_locations?.locations_name?.toLowerCase().includes(query) ||
-      vehicle.mobile_number?.toLowerCase().includes(query) ||
-      vehicle.vehicle_type.toLowerCase().includes(query) ||
-      getVehicleStatus(vehicle).toLowerCase().includes(query)
-    );
-  };
+  // Use useMemo to prevent hydration errors with date calculations
+  const allVehicles = useMemo(() => {
+    const filterVehicles = (vehicleList: Vehicle[]) => {
+      if (!searchQuery.trim()) return vehicleList;
+      
+      const query = searchQuery.toLowerCase();
+      return vehicleList.filter(vehicle => 
+        vehicle.plate_number.toLowerCase().includes(query) ||
+        vehicle.parking_locations?.locations_name?.toLowerCase().includes(query) ||
+        vehicle.mobile_number?.toLowerCase().includes(query) ||
+        vehicle.vehicle_type.toLowerCase().includes(query) ||
+        getVehicleStatus(vehicle).toLowerCase().includes(query)
+      );
+    };
 
-  const allVehicles = filterVehicles(vehicles.sort((a, b) => new Date(b.check_in_time).getTime() - new Date(a.check_in_time).getTime()));
-  const currentlyParkedVehicles = filterVehicles(vehicles.filter(v => v.check_out_time === null));
-  const checkedOutVehicles = filterVehicles(vehicles.filter(v => v.check_out_time !== null));
+    return filterVehicles([...vehicles].sort((a, b) => {
+      const timeA = a.check_in_time ? new Date(a.check_in_time).getTime() : 0;
+      const timeB = b.check_in_time ? new Date(b.check_in_time).getTime() : 0;
+      return timeB - timeA;
+    }));
+  }, [vehicles, searchQuery]);
+
+  const currentlyParkedVehicles = useMemo(() => {
+    const filterVehicles = (vehicleList: Vehicle[]) => {
+      if (!searchQuery.trim()) return vehicleList;
+      
+      const query = searchQuery.toLowerCase();
+      return vehicleList.filter(vehicle => 
+        vehicle.plate_number.toLowerCase().includes(query) ||
+        vehicle.parking_locations?.locations_name?.toLowerCase().includes(query) ||
+        vehicle.mobile_number?.toLowerCase().includes(query) ||
+        vehicle.vehicle_type.toLowerCase().includes(query) ||
+        getVehicleStatus(vehicle).toLowerCase().includes(query)
+      );
+    };
+
+    return filterVehicles(vehicles.filter(v => v.check_out_time === null));
+  }, [vehicles, searchQuery]);
+
+  const checkedOutVehicles = useMemo(() => {
+    const filterVehicles = (vehicleList: Vehicle[]) => {
+      if (!searchQuery.trim()) return vehicleList;
+      
+      const query = searchQuery.toLowerCase();
+      return vehicleList.filter(vehicle => 
+        vehicle.plate_number.toLowerCase().includes(query) ||
+        vehicle.parking_locations?.locations_name?.toLowerCase().includes(query) ||
+        vehicle.mobile_number?.toLowerCase().includes(query) ||
+        vehicle.vehicle_type.toLowerCase().includes(query) ||
+        getVehicleStatus(vehicle).toLowerCase().includes(query)
+      );
+    };
+
+    return filterVehicles(vehicles.filter(v => v.check_out_time !== null));
+  }, [vehicles, searchQuery]);
   
 
   // Pagination logic
@@ -650,22 +772,40 @@ export default function Vehicles() {
   };
 
   const handleCheckoutClick = (vehicle: Vehicle) => {
+    console.log('Vehicles: handleCheckoutClick called', { vehicle, contractorRates });
     setSelectedVehicle(vehicle);
     setShowConfirmDialog(true);
   };
 
   const handleConfirmCheckout = () => {
+    console.log('Vehicles: handleConfirmCheckout called', { selectedVehicle, contractorRates });
+    if (!contractorRates) {
+      console.error('Vehicles: contractorRates is null, cannot open checkout dialog');
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Contractor rates not available. Please refresh the page.",
+      });
+      return;
+    }
     setShowConfirmDialog(false);
     setShowCheckout(true);
   };
 
   const handleCheckoutConfirm = async (data: { payment_amount: number; payment_method: string }) => {
-    if (!selectedVehicle) return;
+    console.log('Vehicles: handleCheckoutConfirm called', { selectedVehicle, data });
+    if (!selectedVehicle) {
+      console.error('Vehicles: selectedVehicle is null');
+      return;
+    }
 
     try {
       setLoading(true);
+      console.log('Vehicles: Starting checkout API call...');
+      // Get current UTC time
+      const now = new Date();
       const checkoutData = {
-        check_out_time: new Date().toISOString(),
+        check_out_time: now.toISOString(), // Already in UTC format (ISO 8601 with Z suffix)
         payment_amount: data.payment_amount,
         payment_method: data.payment_method as 'cash' | 'card' | 'digital' | 'free'
       };
@@ -693,7 +833,15 @@ export default function Vehicles() {
       setShowCheckout(false);
       setShowSuccessDialog(true);
       // Don't clear selectedVehicle yet - let success dialog use it
-    } catch (error) {
+    } catch (error: any) {
+      console.error('Error during checkout:', error);
+      toast({
+        variant: "destructive",
+        title: "Checkout Failed",
+        description: error?.message || "Failed to checkout vehicle. Please try again.",
+      });
+      setShowCheckout(false);
+      setSelectedVehicle(null);
       console.error('Error checking out vehicle:', error);
       alert('Error checking out vehicle: ' + (error as Error).message);
     } finally {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -264,8 +264,10 @@ export default function CheckInOut() {
 
     setProcessing(true);
     try {
+      // Get current UTC time
+      const now = new Date();
       const checkoutData = {
-        check_out_time: new Date().toISOString(),
+        check_out_time: now.toISOString(), // Already in UTC format (ISO 8601 with Z suffix)
         payment_amount: 0, // Will be calculated by the API
         payment_method: paymentMethod,
       };
@@ -299,6 +301,21 @@ export default function CheckInOut() {
     setPaymentMethod('cash');
     setShowCheckOutModal(true);
   };
+
+  // Calculate parking duration and amount for checkout modal (using useMemo to prevent hydration errors)
+  const checkoutCalculations = useMemo(() => {
+    if (!selectedVehicle || !selectedVehicle.check_in_time) {
+      return { duration: 0, amount: 0 };
+    }
+    
+    const checkInTime = new Date(selectedVehicle.check_in_time).getTime();
+    const currentTime = Date.now();
+    const durationMs = currentTime - checkInTime;
+    const durationHours = Math.floor(durationMs / (1000 * 60 * 60));
+    const amount = durationHours * 50;
+    
+    return { duration: durationHours, amount };
+  }, [selectedVehicle]);
 
   // Filter and paginate vehicles
   const filteredVehicles = vehicles.filter(vehicle => 
@@ -654,7 +671,7 @@ export default function CheckInOut() {
                   <div className="flex justify-between">
                     <span className="text-sm text-gray-600">Duration:</span>
                     <span className="text-sm font-medium">
-                      {Math.floor((new Date().getTime() - new Date(selectedVehicle.check_in_time).getTime()) / (1000 * 60 * 60))}h
+                      {checkoutCalculations.duration}h
                     </span>
                   </div>
                   <div className="flex justify-between">
@@ -665,7 +682,7 @@ export default function CheckInOut() {
                     <div className="flex justify-between">
                       <span className="font-semibold">Total Amount:</span>
                       <span className="text-lg font-bold text-green-600">
-                        ₹{Math.floor((new Date().getTime() - new Date(selectedVehicle.check_in_time).getTime()) / (1000 * 60 * 60)) * 50}
+                        ₹{checkoutCalculations.amount}
                       </span>
                     </div>
                   </div>

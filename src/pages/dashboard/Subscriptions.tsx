@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
-import { AlertTriangle, Calendar, RefreshCw, Users, MapPin } from "lucide-react";
+import { AlertTriangle, Calendar, RefreshCw, Users, MapPin, Loader2 } from "lucide-react";
 import { SubscriptionAPI, type SubscriptionPlan } from "@/services/subscriptionApi";
 import { ContractorAPI } from "@/services/contractorApi";
 import { useToast } from "@/hooks/use-toast";
@@ -16,15 +16,13 @@ import { SimpleSubscriptionDashboard } from "@/components/dashboard/SimpleSubscr
 export default function Subscriptions() {
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [contractors, setContractors] = useState<any[]>([]);
-  const [expiringSubscriptions, setExpiringSubscriptions] = useState<any[]>([]);
-  const [expiredSubscriptions, setExpiredSubscriptions] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const [selectedContractor, setSelectedContractor] = useState<string>("");
   const [selectedPlan, setSelectedPlan] = useState<string>("");
   const [durationDays, setDurationDays] = useState<number>(30);
   const [showAssignDialog, setShowAssignDialog] = useState(false);
   const [showExtendDialog, setShowExtendDialog] = useState(false);
   const [extendDays, setExtendDays] = useState<number>(30);
+  const [assigning, setAssigning] = useState(false);
   const { toast } = useToast();
 
   // Convert contractors to ComboboxOption format
@@ -35,77 +33,21 @@ export default function Subscriptions() {
   }));
 
   useEffect(() => {
-    fetchData();
+    // Fetch plans and contractors only for the assign dialog
+    const fetchDialogData = async () => {
+      try {
+        const [plansData, contractorsData] = await Promise.all([
+          SubscriptionAPI.getSubscriptionPlans(),
+          ContractorAPI.getAllContractors()
+        ]);
+        setPlans(plansData);
+        setContractors(contractorsData);
+      } catch (error: any) {
+        console.error('Error fetching dialog data:', error);
+      }
+    };
+    fetchDialogData();
   }, []);
-
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      console.log('Fetching subscription data...');
-      
-      // Fetch data with individual error handling
-      let plansData = [];
-      let contractorsData = [];
-      let expiringData = [];
-      let expiredData = [];
-
-      try {
-        console.log('Fetching subscription plans...');
-        plansData = await SubscriptionAPI.getSubscriptionPlans();
-        console.log('Plans data received:', plansData);
-        console.log('Plans count:', plansData?.length || 0);
-      } catch (error) {
-        console.error('Error fetching plans:', error);
-        console.error('Error details:', error.message);
-        console.error('Error code:', error.code);
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: `Failed to fetch subscription plans: ${error.message}`,
-        });
-      }
-
-      try {
-        contractorsData = await ContractorAPI.getAllContractors();
-        console.log('Contractors data:', contractorsData);
-      } catch (error) {
-        console.error('Error fetching contractors:', error);
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "Failed to fetch contractors",
-        });
-      }
-
-      try {
-        expiringData = await SubscriptionAPI.getExpiringSubscriptions(7);
-        console.log('Expiring data:', expiringData);
-      } catch (error) {
-        console.error('Error fetching expiring subscriptions:', error);
-      }
-
-      try {
-        expiredData = await SubscriptionAPI.getExpiredSubscriptions();
-        console.log('Expired data:', expiredData);
-      } catch (error) {
-        console.error('Error fetching expired subscriptions:', error);
-      }
-      
-      setPlans(plansData);
-      setContractors(contractorsData);
-      setExpiringSubscriptions(expiringData);
-      setExpiredSubscriptions(expiredData);
-    } catch (error) {
-      console.error('Error fetching subscription data:', error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to fetch subscription data",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleAssignSubscription = async () => {
     if (!selectedContractor || !selectedPlan) {
@@ -117,14 +59,10 @@ export default function Subscriptions() {
       return;
     }
 
-    console.log('🔍 UI Assignment starting...');
-    console.log('  selectedContractor:', selectedContractor);
-    console.log('  selectedPlan:', selectedPlan);
-    console.log('  durationDays:', durationDays);
+    setAssigning(true);
 
     try {
       await SubscriptionAPI.assignSubscription(selectedContractor, selectedPlan, durationDays);
-      console.log('✅ UI Assignment successful');
       toast({
         title: "Success",
         description: "Subscription assigned successfully",
@@ -132,12 +70,21 @@ export default function Subscriptions() {
       setShowAssignDialog(false);
       fetchData();
     } catch (error: any) {
-      console.error('❌ UI Assignment failed:', error);
+      // Extract error message properly - handle both ApiError format and generic errors
+      let errorMessage = "Failed to assign subscription";
+      if (error?.message) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
+      
       toast({
         variant: "destructive",
         title: "Error",
-        description: error.message || "Failed to assign subscription",
+        description: errorMessage,
       });
+    } finally {
+      setAssigning(false);
     }
   };
 
@@ -171,14 +118,6 @@ export default function Subscriptions() {
         return 'bg-gray-100 text-gray-800';
     }
   };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-parkflow-blue"></div>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -239,8 +178,15 @@ export default function Subscriptions() {
                 Duration will be automatically set from the selected plan. You can modify it if needed.
               </div>
             </div>
-            <Button onClick={handleAssignSubscription} className="w-full">
-              Assign Subscription
+            <Button onClick={handleAssignSubscription} className="w-full" disabled={assigning}>
+              {assigning ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Assigning...
+                </>
+              ) : (
+                "Assign Subscription"
+              )}
             </Button>
           </div>
         </DialogContent>

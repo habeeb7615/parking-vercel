@@ -17,7 +17,8 @@ import {
   Trash2,
   Save,
   X,
-  CalendarPlus
+  CalendarPlus,
+  Loader2
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
@@ -55,7 +56,8 @@ export function SimpleSubscriptionDashboard({ onAssignSubscription }: SimpleSubs
   const [planForm, setPlanForm] = useState({
     name: '',
     price: 0,
-    days: 0
+    days: 0,
+    features: {} as any
   });
   
   // Extend subscription states
@@ -76,12 +78,16 @@ export function SimpleSubscriptionDashboard({ onAssignSubscription }: SimpleSubs
   const [historyPageSize, setHistoryPageSize] = useState(5);
   const [historyTotalPages, setHistoryTotalPages] = useState(1);
   
+  // Unassign subscription states
+  const [showUnassignDialog, setShowUnassignDialog] = useState(false);
+  const [contractorToUnassign, setContractorToUnassign] = useState<any | null>(null);
+  const [unassigning, setUnassigning] = useState(false);
+  
   const { toast } = useToast();
 
 
   // Force refresh on component mount to avoid cache issues
   useEffect(() => {
-    console.log('🔍 Component mounted, refreshing data...');
     fetchData(true);
   }, []);
 
@@ -89,11 +95,9 @@ export function SimpleSubscriptionDashboard({ onAssignSubscription }: SimpleSubs
   const fetchData = async (forceRefresh = false) => {
     try {
       setLoading(true);
-      console.log('🔍 Fetching subscription data...', { forceRefresh, timestamp: Date.now() });
       
       // Clear existing data first for force refresh
       if (forceRefresh) {
-        console.log('🔍 Clearing existing data for fresh fetch...');
         setAllContractors([]);
         setContractors([]);
       }
@@ -103,26 +107,12 @@ export function SimpleSubscriptionDashboard({ onAssignSubscription }: SimpleSubs
         SubscriptionAPI.getSubscriptionPlans()
       ]);
       
-      console.log('🔍 Fetched contractors data:', {
-        count: contractorsData?.length || 0,
-        data: contractorsData?.map(c => ({
-          id: c.id,
-          company_name: c.company_name,
-          subscription_status: c.profiles?.subscription_status,
-          subscription_end_date: c.profiles?.subscription_end_date,
-          subscription_start_date: c.profiles?.subscription_start_date,
-          daysRemaining: getDaysRemainingNumber(c.profiles),
-          isExpired: getDaysRemainingNumber(c.profiles) <= 0
-        }))
-      });
-      
       // Save all and compute initial page
       setAllContractors(contractorsData || []);
       setPlans(plansData);
       
       // Force re-render by updating a dummy state
       if (forceRefresh) {
-        console.log('🔍 Force refreshing component state...');
         setPage(prev => prev + 0.001); // Trigger re-render
       }
     } catch (error) {
@@ -226,19 +216,12 @@ export function SimpleSubscriptionDashboard({ onAssignSubscription }: SimpleSubs
 
   const isSubscriptionExpiring = (subscription: any) => {
     if (!subscription || !subscription.subscription_end_date) {
-      console.log('🔍 No subscription or end date:', { subscription });
       return false;
     }
     
     const endDate = new Date(subscription.subscription_end_date);
     const now = new Date();
     const daysRemaining = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    
-    console.log('🔍 Checking subscription expiry:', {
-      endDate: subscription.subscription_end_date,
-      daysRemaining,
-      shouldShowExtend: daysRemaining <= 30
-    });
     
     // Show extend button for subscriptions that are expiring (≤30 days) OR already expired
     return daysRemaining <= 30;
@@ -254,7 +237,8 @@ export function SimpleSubscriptionDashboard({ onAssignSubscription }: SimpleSubs
     setPlanForm({
       name: plan.name,
       price: plan.price,
-      days: plan.days || plan.duration_days || 30
+      days: plan.days || plan.duration_days || 30,
+      features: plan.features || {}
     });
     setShowEditDialog(true);
   };
@@ -264,7 +248,8 @@ export function SimpleSubscriptionDashboard({ onAssignSubscription }: SimpleSubs
     setPlanForm({
       name: '',
       price: 0,
-      days: 30
+      days: 30,
+      features: {}
     });
     setShowCreateDialog(true);
   };
@@ -273,14 +258,24 @@ export function SimpleSubscriptionDashboard({ onAssignSubscription }: SimpleSubs
     try {
       if (editingPlan) {
         // Update existing plan
-        await SubscriptionAPI.updateSubscriptionPlan(editingPlan.id, planForm);
+        await SubscriptionAPI.updateSubscriptionPlan(editingPlan.id, {
+          name: planForm.name,
+          price: planForm.price,
+          days: planForm.days,
+          features: planForm.features
+        });
         toast({
           title: "Success",
           description: "Plan updated successfully"
         });
       } else {
         // Create new plan
-        await SubscriptionAPI.createSubscriptionPlan(planForm);
+        await SubscriptionAPI.createSubscriptionPlan({
+          name: planForm.name,
+          price: planForm.price,
+          days: planForm.days,
+          features: planForm.features
+        });
         toast({
           title: "Success",
           description: "Plan created successfully"
@@ -330,21 +325,51 @@ export function SimpleSubscriptionDashboard({ onAssignSubscription }: SimpleSubs
 
   // Extend subscription functions
   const handleExtendSubscription = (contractor: any) => {
-    console.log('🔍 handleExtendSubscription called with contractor:', contractor);
     setContractorToExtend(contractor);
     setExtendDays(30);
     setSelectedPlanId(contractor.profiles?.subscription_plan_id || '');
     setExtendMode('extend'); // Default to extend mode
     setShowExtendDialog(true);
-    console.log('🔍 Dialog should now be open, showExtendDialog:', true);
+  };
+
+  const handleUnassignSubscription = (contractor: any) => {
+    setContractorToUnassign(contractor);
+    setShowUnassignDialog(true);
+  };
+
+  const confirmUnassignSubscription = async () => {
+    if (!contractorToUnassign || unassigning) {
+      return;
+    }
+
+    setUnassigning(true);
+    try {
+      await SubscriptionAPI.unassignSubscription(contractorToUnassign.user_id);
+      toast({
+        title: "Success",
+        description: `Subscription unassigned successfully for ${contractorToUnassign.company_name}`,
+      });
+      // Close modal only on success
+      setShowUnassignDialog(false);
+      setContractorToUnassign(null);
+      // Refresh data after unassign
+      setTimeout(async () => {
+        await fetchData(true);
+      }, 1000);
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error?.message || "Failed to unassign subscription",
+      });
+      // On error, keep modal open (don't close it)
+    } finally {
+      // Always reset loading state to prevent UI from getting stuck
+      setUnassigning(false);
+    }
   };
 
   const confirmExtendSubscription = async () => {
-    console.log('🔍 confirmExtendSubscription called');
-    console.log('🔍 contractorToExtend:', contractorToExtend);
-    console.log('🔍 extendDays:', extendDays);
-    console.log('🔍 extendMode:', extendMode);
-    console.log('🔍 selectedPlanId:', selectedPlanId);
     
     if (!contractorToExtend) {
       console.error('❌ No contractor selected for extension');
@@ -366,20 +391,9 @@ export function SimpleSubscriptionDashboard({ onAssignSubscription }: SimpleSubs
       return;
     }
     
-    console.log('🔍 Processing subscription for contractor:', {
-      contractorId: contractorToExtend.id,
-      userId: contractorToExtend.user_id,
-      companyName: contractorToExtend.company_name,
-      extendDays,
-      extendMode,
-      selectedPlanId
-    });
-    
     try {
       if (extendMode === 'extend') {
-        console.log('🔍 Calling SubscriptionAPI.extendSubscription...');
         await SubscriptionAPI.extendSubscription(contractorToExtend.user_id, extendDays);
-        console.log('✅ SubscriptionAPI.extendSubscription successful');
         
         // Update local state immediately
         const now = new Date();
@@ -405,9 +419,7 @@ export function SimpleSubscriptionDashboard({ onAssignSubscription }: SimpleSubs
           description: `Subscription extended for ${extendDays} days. Start date reset to current time.`,
         });
       } else {
-        console.log('🔍 Calling SubscriptionAPI.assignSubscription for plan change...');
         await SubscriptionAPI.assignSubscription(contractorToExtend.user_id, selectedPlanId, extendDays);
-        console.log('✅ SubscriptionAPI.assignSubscription successful');
         
         // Update local state immediately
         const now = new Date();
@@ -441,9 +453,7 @@ export function SimpleSubscriptionDashboard({ onAssignSubscription }: SimpleSubs
       setExtendMode('extend');
       
       // Force refresh with delay to ensure database is updated
-      console.log('🔍 Waiting for database update...');
       setTimeout(async () => {
-        console.log('🔍 Refreshing data after subscription update...');
         await fetchData(true);
       }, 1000); // 1 second delay
     } catch (error: any) {
@@ -505,8 +515,6 @@ export function SimpleSubscriptionDashboard({ onAssignSubscription }: SimpleSubs
   // Calculate financial data from current subscriptions (faster)
   useEffect(() => {
     if (contractorsWithSubscriptions.length > 0 && plans.length > 0) {
-      console.log('🔍 Calculating financial data from current subscriptions...');
-      
       const today = new Date();
       const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
       
@@ -532,7 +540,6 @@ export function SimpleSubscriptionDashboard({ onAssignSubscription }: SimpleSubs
         lastMonthRevenue: todayRevenue * 4 // Mock calculation
       };
       
-      console.log('🔍 Calculated financial data:', calculatedData);
       setFinancialData(calculatedData);
     }
   }, [contractorsWithSubscriptions, plans]);
@@ -544,10 +551,7 @@ export function SimpleSubscriptionDashboard({ onAssignSubscription }: SimpleSubs
     try {
       setHistoryLoading(true);
       const currentPageSize = pageSize || historyPageSize;
-      console.log('🔍 Fetching subscription history for contractor:', contractorId, 'page:', page, 'pageSize:', currentPageSize);
-      
       const history = await SubscriptionDashboardAPI.getContractorSubscriptionHistory(contractorId);
-      console.log('🔍 Subscription history received:', history);
       
       // Calculate pagination
       const totalItems = history.length;
@@ -555,15 +559,6 @@ export function SimpleSubscriptionDashboard({ onAssignSubscription }: SimpleSubs
       const startIndex = (page - 1) * currentPageSize;
       const endIndex = startIndex + currentPageSize;
       const paginatedHistory = history.slice(startIndex, endIndex);
-      
-      console.log('🔍 Pagination calculation:', {
-        totalItems,
-        currentPageSize,
-        totalPages,
-        startIndex,
-        endIndex,
-        paginatedHistoryLength: paginatedHistory.length
-      });
       
       setSubscriptionHistory(paginatedHistory);
       setHistoryTotalPages(totalPages);
@@ -585,19 +580,6 @@ export function SimpleSubscriptionDashboard({ onAssignSubscription }: SimpleSubs
     }
   };
 
-  // Debug logging for subscription counts
-  console.log('🔍 Subscription Counts Debug:', {
-    totalContractors: contractors.length,
-    contractorsWithSubscriptions: contractorsWithSubscriptions.length,
-    activeSubscriptions: activeSubscriptions.length,
-    expiringSubscriptions: expiringSubscriptions.length,
-    expiredSubscriptions: expiredSubscriptions.length,
-    breakdown: {
-      active: activeSubscriptions.map(c => ({ id: c.id, company: c.company_name, status: c.profiles?.subscription_status, daysRemaining: getDaysRemainingNumber(c.profiles) })),
-      expiring: expiringSubscriptions.map(c => ({ id: c.id, company: c.company_name, status: c.profiles?.subscription_status, daysRemaining: getDaysRemainingNumber(c.profiles) })),
-      expired: expiredSubscriptions.map(c => ({ id: c.id, company: c.company_name, status: c.profiles?.subscription_status, daysRemaining: getDaysRemainingNumber(c.profiles) }))
-    }
-  });
 
   if (loading) {
     return (
@@ -657,7 +639,7 @@ export function SimpleSubscriptionDashboard({ onAssignSubscription }: SimpleSubs
       </div>
 
       {/* Financial Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      {/* <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <MetricCard
           title="Total Plan Value"
           value={`₹${totalPlanAmount}`}
@@ -697,7 +679,7 @@ export function SimpleSubscriptionDashboard({ onAssignSubscription }: SimpleSubs
           icon={Calendar}
           variant="info"
         />
-      </div>
+      </div> */}
 
       {/* Available Plans */}
       <Card>
@@ -826,14 +808,6 @@ export function SimpleSubscriptionDashboard({ onAssignSubscription }: SimpleSubs
               </TableHeader>
               <TableBody>
                 {contractorsWithSubscriptions.map((contractor) => {
-                  console.log('🔍 Contractor data:', {
-                    companyName: contractor.company_name,
-                    subscriptionStatus: contractor.profiles?.subscription_status,
-                    subscriptionEndDate: contractor.profiles?.subscription_end_date,
-                    daysRemaining: getDaysRemaining(contractor.profiles),
-                    shouldShowExtend: isSubscriptionExpiring(contractor.profiles) || contractor.profiles?.subscription_status === 'expired'
-                  });
-                  
                   return (
                   <TableRow key={contractor.id}>
                     <TableCell>
@@ -902,15 +876,6 @@ export function SimpleSubscriptionDashboard({ onAssignSubscription }: SimpleSubs
                           const isExpiring = isSubscriptionExpiring(contractor.profiles);
                           const hasSubscription = contractor.profiles?.subscription_plan_id;
                           
-                          console.log('🔍 Button rendering for contractor:', {
-                            companyName: contractor.company_name,
-                            daysRemaining,
-                            isExpired,
-                            isExpiring,
-                            hasSubscription,
-                            subscriptionStatus: contractor.profiles?.subscription_status
-                          });
-                          
                           // Show button for all contractors with subscriptions
                           if (!hasSubscription) return null;
                           
@@ -938,6 +903,15 @@ export function SimpleSubscriptionDashboard({ onAssignSubscription }: SimpleSubs
                             </Tooltip>
                           );
                         })()}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleUnassignSubscription(contractor)}
+                          className="text-red-600 border-red-300 hover:bg-red-100 hover:border-red-500 hover:text-red-700"
+                        >
+                          <X className="h-4 w-4 mr-1" />
+                          Unassign
+                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -1104,17 +1078,8 @@ export function SimpleSubscriptionDashboard({ onAssignSubscription }: SimpleSubs
       </AlertDialog>
 
       {/* Extend Subscription Dialog */}
-      <Dialog open={showExtendDialog} onOpenChange={(open) => {
-        console.log('🔍 Dialog onOpenChange called with:', open);
-        setShowExtendDialog(open);
-      }}>
+      <Dialog open={showExtendDialog} onOpenChange={setShowExtendDialog}>
         <DialogContent>
-          {console.log('🔍 Dialog rendering with state:', {
-            showExtendDialog,
-            contractorToExtend: !!contractorToExtend,
-            extendDays,
-            buttonDisabled: !contractorToExtend || extendDays <= 0
-          })}
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <CalendarPlus className="h-5 w-5 text-blue-600" />
@@ -1233,14 +1198,6 @@ export function SimpleSubscriptionDashboard({ onAssignSubscription }: SimpleSubs
               </Button>
               <Button 
                 onClick={() => {
-                  console.log('🔍 Extend Subscription button clicked');
-                  console.log('🔍 Button state check:', {
-                    contractorToExtend: !!contractorToExtend,
-                    extendDays,
-                    extendMode,
-                    selectedPlanId,
-                    isDisabled: !contractorToExtend || extendDays <= 0 || (extendMode === 'change' && !selectedPlanId)
-                  });
                   confirmExtendSubscription();
                 }}
                 disabled={!contractorToExtend || extendDays <= 0 || (extendMode === 'change' && !selectedPlanId)}
@@ -1253,6 +1210,45 @@ export function SimpleSubscriptionDashboard({ onAssignSubscription }: SimpleSubs
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Unassign Subscription Dialog */}
+      <AlertDialog 
+        open={showUnassignDialog} 
+        onOpenChange={(open) => {
+          // Prevent closing modal during unassigning
+          if (!open && !unassigning) {
+            setShowUnassignDialog(false);
+            setContractorToUnassign(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unassign Subscription</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to unassign the subscription from {contractorToUnassign?.company_name}? 
+              This action will remove their current subscription plan.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={unassigning}>Cancel</AlertDialogCancel>
+            <Button
+              onClick={confirmUnassignSubscription}
+              disabled={unassigning}
+              className="bg-red-600 hover:bg-red-700 disabled:opacity-50"
+            >
+              {unassigning ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Unassigning...
+                </>
+              ) : (
+                'Unassign'
+              )}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Subscription History Dialog */}
       <Dialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog}>
@@ -1275,53 +1271,64 @@ export function SimpleSubscriptionDashboard({ onAssignSubscription }: SimpleSubs
             </div>
           ) : (
             <div className="space-y-4">
-              {subscriptionHistory.map((history, index) => (
-                <Card key={history.id} className="p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Badge variant={
-                          history.action === 'assigned' ? 'default' :
-                          history.action === 'extended' ? 'secondary' :
-                          history.action === 'cancelled' ? 'destructive' : 'outline'
-                        }>
-                          {history.action.charAt(0).toUpperCase() + history.action.slice(1)}
-                        </Badge>
-                        <span className="font-medium">{history.plan_name}</span>
-                        {history.previous_plan_name && (
-                          <span className="text-muted-foreground">
-                            (from {history.previous_plan_name})
-                          </span>
+              {subscriptionHistory.map((history, index) => {
+                // Calculate duration in days
+                const startDate = new Date(history.start_date);
+                const endDate = new Date(history.end_date);
+                const durationDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+                
+                return (
+                  <Card key={history.id} className="p-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Badge variant={
+                            history.action === 'assigned' ? 'default' :
+                            history.action === 'extended' ? 'secondary' :
+                            history.action === 'unassigned' ? 'destructive' : 'outline'
+                          }>
+                            {history.action.charAt(0).toUpperCase() + history.action.slice(1)}
+                          </Badge>
+                          <span className="font-medium">{history.plan_name}</span>
+                          <Badge variant={history.status === 'active' ? 'default' : 'secondary'} className="ml-2">
+                            {history.status}
+                          </Badge>
+                        </div>
+                        
+                        {history.notes && (
+                          <div className="mb-3 text-sm text-muted-foreground italic">
+                            {history.notes}
+                          </div>
                         )}
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <div className="font-medium text-muted-foreground">Start Date</div>
+                            <div>{formatDate(history.start_date)}</div>
+                          </div>
+                          <div>
+                            <div className="font-medium text-muted-foreground">End Date</div>
+                            <div>{formatDate(history.end_date)}</div>
+                          </div>
+                          <div>
+                            <div className="font-medium text-muted-foreground">Duration</div>
+                            <div>{durationDays} days</div>
+                          </div>
+                          <div>
+                            <div className="font-medium text-muted-foreground">Plan Price</div>
+                            <div className="font-semibold text-green-600">₹{history.plan_price}</div>
+                          </div>
+                        </div>
+                        
                       </div>
                       
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                        <div>
-                          <div className="font-medium text-muted-foreground">Start Date</div>
-                          <div>{formatDate(history.new_start_date)}</div>
-                        </div>
-                        <div>
-                          <div className="font-medium text-muted-foreground">End Date</div>
-                          <div>{formatDate(history.new_end_date)}</div>
-                        </div>
-                        <div>
-                          <div className="font-medium text-muted-foreground">Duration</div>
-                          <div>{history.duration_days} days</div>
-                        </div>
-                        <div>
-                          <div className="font-medium text-muted-foreground">Amount Paid</div>
-                          <div className="font-semibold text-green-600">₹{history.amount_paid}</div>
-                        </div>
+                      <div className="text-right text-sm text-muted-foreground">
+                        <div>{formatDate(history.created_at)}</div>
                       </div>
-                      
                     </div>
-                    
-                    <div className="text-right text-sm text-muted-foreground">
-                      <div>{formatDate(history.created_on)}</div>
-                    </div>
-                  </div>
-                </Card>
-              ))}
+                  </Card>
+                );
+              })}
               
               {/* Pagination Controls */}
               {historyTotalPages > 1 && (
@@ -1334,7 +1341,6 @@ export function SimpleSubscriptionDashboard({ onAssignSubscription }: SimpleSubs
                       value={historyPageSize}
                       onChange={(e) => {
                         const newPageSize = Number(e.target.value);
-                        console.log('🔍 Page size changed to:', newPageSize);
                         fetchContractorHistory(selectedContractorHistory?.user_id, 1, newPageSize);
                       }}
                       className="px-2 py-1 text-sm border rounded"

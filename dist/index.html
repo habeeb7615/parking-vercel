@@ -1,33 +1,6 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <!-- Fix paths for file:// protocol compatibility -->
-    <script>
-      (function() {
-        // Fix paths if opened via file:// protocol (for local testing)
-        if (window.location.protocol === 'file:') {
-          const fixPath = (attr) => {
-            // Fix all elements with absolute paths
-            document.querySelectorAll('[' + attr + '^="/"]').forEach(el => {
-              const currentPath = el.getAttribute(attr);
-              if (currentPath && currentPath.startsWith('/')) {
-                // Convert absolute to relative path
-                el.setAttribute(attr, '.' + currentPath);
-              }
-            });
-            // Also fix relative paths that might have been converted
-            document.querySelectorAll('[' + attr + '^="./"]').forEach(el => {
-              // Already relative, keep as is
-            });
-          };
-          // Fix all link and script paths before they load
-          fixPath('href');
-          fixPath('src');
-          fixPath('content');
-        }
-      })();
-    </script>
-
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>parkflow-sync</title>
@@ -84,20 +57,10 @@
         100% { transform: translate(-50%, -50%) rotate(360deg); }
       }
     </style>
-    <!-- Preload critical resources for instant loading -->
-    <link rel="preload" href="/assets/vendor-CRDlltRq.js" as="script" />
-    <link rel="preload" href="/assets/ui-Bopd8g-C.js" as="script" />
-    <link rel="preload" href="/assets/utils--BulIq_u.js" as="script" />
-    <link rel="preload" href="/assets/router-DF9ahorg.js" as="script" />
-    <link rel="preload" href="/assets/index-C8xpF_xW.css" as="style" />
-    <link rel="modulepreload" href="/assets/index-Cx7DtqKq.js" />
-
-    <script type="module" crossorigin src="/assets/index-Cx7DtqKq.js"></script>
-    <link rel="modulepreload" crossorigin href="/assets/vendor-CRDlltRq.js">
-    <link rel="modulepreload" crossorigin href="/assets/ui-Bopd8g-C.js">
-    <link rel="modulepreload" crossorigin href="/assets/utils--BulIq_u.js">
-    <link rel="modulepreload" crossorigin href="/assets/router-DF9ahorg.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-C8xpF_xW.css">
+    <script type="module" crossorigin src="/assets/index-BcW_7W7u.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/vendor-BcxhVa3l.js">
+    <link rel="modulepreload" crossorigin href="/assets/router-wR9TD4dP.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-CJoyXTpN.css">
   </head>
 
   <body>
@@ -109,8 +72,8 @@
     
     <!-- Mobile browser refresh fallback -->
     <script>
-      // Handle mobile browser refresh issues (skip on file:// protocol)
-      if (window.location.protocol !== 'file:' && window.location.pathname !== '/' && !window.location.pathname.startsWith('/dashboard')) {
+      // Handle mobile browser refresh issues
+      if (window.location.pathname !== '/' && !window.location.pathname.startsWith('/dashboard')) {
         // If user is on a deep route and refreshes, redirect to dashboard
         if (window.location.pathname.includes('dashboard')) {
           window.location.href = '/dashboard';
@@ -120,42 +83,14 @@
     
     <!-- Service Worker disabled for stability -->
     <script>
-      // Unregister any existing service workers
+      // Unregister any existing service workers silently
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.getRegistrations().then(function(registrations) {
           for(let registration of registrations) {
             registration.unregister();
-            console.log('Service Worker unregistered:', registration);
           }
         });
       }
-      console.log('Service Worker disabled for production stability');
     </script>
-  
-    <!-- Performance optimization script -->
-    <script>
-      // Remove loading spinner when React app loads
-      window.addEventListener('DOMContentLoaded', () => {
-        const spinner = document.querySelector('.loading-spinner');
-        if (spinner) {
-          setTimeout(() => {
-            spinner.style.opacity = '0';
-            setTimeout(() => spinner.remove(), 300);
-          }, 100);
-        }
-      });
-      
-      // Preload critical routes (only on http/https, not file://)
-      if (window.location.protocol !== 'file:') {
-        const criticalRoutes = ['/dashboard', '/login', '/register'];
-        criticalRoutes.forEach(route => {
-          const link = document.createElement('link');
-          link.rel = 'prefetch';
-          link.href = route;
-          document.head.appendChild(link);
-        });
-      }
-    </script>
-
   </body>
 </html>

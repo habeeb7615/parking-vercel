@@ -10,6 +10,14 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 8080,
     // Vite automatically handles client-side routing
+    proxy: {
+      '/apitest': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path, // Keep the /apitest path as-is
+      },
+    },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {
@@ -21,8 +29,17 @@ export default defineConfig(({ mode }) => ({
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
-    emptyOutDir: true, // Clean dist folder before build
-    minify: 'esbuild', // Use esbuild minification (safer and faster than terser)
+    minify: mode === 'production' ? 'terser' : false, // Use terser for better compatibility
+    terserOptions: mode === 'production' ? {
+      compress: {
+        drop_console: true, // Remove console logs in production
+        drop_debugger: true,
+        pure_funcs: ['console.log', 'console.info', 'console.debug'], // Remove specific console methods
+      },
+      format: {
+        comments: false, // Remove comments
+      },
+    } : undefined,
     rollupOptions: {
       output: {
         manualChunks: {
@@ -37,13 +54,22 @@ export default defineConfig(({ mode }) => ({
       },
     },
     // Enable source maps for debugging (disabled for production)
-    sourcemap: false,
+    sourcemap: mode === 'development',
     // Optimize for static serving
     target: 'es2020',
     cssCodeSplit: true,
     reportCompressedSize: false,
-    // Chunk size warnings
-    chunkSizeWarningLimit: 1000,
+    // Fix preload crossorigin issues
+    modulePreload: {
+      polyfill: false, // Disable polyfill to avoid crossorigin issues
+      resolveDependencies: (filename, deps) => {
+        // Only preload critical dependencies to reduce warnings
+        return deps.filter(dep => {
+          // Preload only vendor, router, and main entry chunks
+          return dep.includes('vendor') || dep.includes('router') || dep.includes('index');
+        });
+      },
+    },
   },
   // Ensure proper handling of client-side routing
   preview: {
