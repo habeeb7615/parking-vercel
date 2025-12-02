@@ -98,7 +98,15 @@ export class VehicleAPI {
   // Get vehicles for contractor (from all their locations)
   static async getContractorVehicles(contractorId: string): Promise<Vehicle[]> {
     const response = await apiClient.get<Vehicle[]>(`/vehicles/contractor/${contractorId}`);
-    return response.data || [];
+    // Handle different response structures
+    if (Array.isArray(response.data)) {
+      return response.data;
+    }
+    // If response.data is an object with a data property (nested structure)
+    if (response.data && typeof response.data === 'object' && 'data' in response.data && Array.isArray(response.data.data)) {
+      return response.data.data;
+    }
+    return [];
   }
 
   // Get vehicles for attendant (assigned locations)

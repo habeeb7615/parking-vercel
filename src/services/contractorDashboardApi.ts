@@ -32,6 +32,17 @@ export interface ContractorStats {
   todayVehicles: number;
 }
 
+export interface RecentActivityItem {
+  attendant_name: string;
+  plate_number: string;
+  vehicle_type: string;
+  check_in_time: string;
+  check_out_time: string | null;
+  amount: number;
+  payment_status: string;
+  created_on: string;
+}
+
 export class ContractorDashboardAPI {
   // Get contractor dashboard data
   static async getContractorDashboard(userId: string): Promise<ContractorDashboardData> {
@@ -44,6 +55,13 @@ export class ContractorDashboardAPI {
   static async getContractorStats(userId: string): Promise<ContractorStats> {
     const response = await apiClient.get<ContractorStats>(`/contractor-dashboard/${userId}/stats`);
     return response.data;
+  }
+
+  // Get recent activity (latest 10 records)
+  static async getRecentActivity(limit: number = 10): Promise<RecentActivityItem[]> {
+    const response = await apiClient.get<{ statusCode: number; data: RecentActivityItem[] }>('/contractor-dashboard/recent-activity', { limit });
+    // Response structure: { statusCode: 200, data: [...] }
+    return response.data?.data || [];
   }
 
 }

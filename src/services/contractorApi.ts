@@ -196,7 +196,15 @@ export class ContractorAPI {
   // Get all locations under a contractor
   static async getContractorLocations(contractorId: string): Promise<Location[]> {
     const response = await apiClient.get<Location[]>(`/contractors/${contractorId}/locations`);
-    return response.data || [];
+    // Handle different response structures
+    if (Array.isArray(response.data)) {
+      return response.data;
+    }
+    // If response.data is an object with a data property (nested structure)
+    if (response.data && typeof response.data === 'object' && 'data' in response.data && Array.isArray(response.data.data)) {
+      return response.data.data;
+    }
+    return [];
   }
 
   // Get all attendants under a contractor

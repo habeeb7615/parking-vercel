@@ -31,7 +31,7 @@ import { AttendantAPI, Attendant } from "@/services/attendantApi";
 import { LocationAPI, Location } from "@/services/locationApi";
 import { VehicleAPI, Vehicle } from "@/services/vehicleApi";
 import { PaymentAPI, Payment } from "@/services/paymentApi";
-import { ContractorDashboardAPI, ContractorDashboardData, ContractorStats } from "@/services/contractorDashboardApi";
+import { ContractorDashboardAPI, ContractorDashboardData, ContractorStats, RecentActivityItem } from "@/services/contractorDashboardApi";
 import { ContractorAPI } from "@/services/contractorApi";
 import { SubscriptionAPI } from "@/services/subscriptionApi";
 import { apiClient } from "@/lib/apiClient";
@@ -76,7 +76,8 @@ const ContractorDashboard = memo(function ContractorDashboard() {
   const [dashboardData, setDashboardData] = useState<ContractorDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [recentActivity, setRecentActivity] = useState<any[]>([]);
+  const [recentActivity, setRecentActivity] = useState<RecentActivityItem[]>([]);
+  const [recentActivityLoading, setRecentActivityLoading] = useState(false);
   
   // Subscription state
   const [subscriptionDetails, setSubscriptionDetails] = useState<{
@@ -251,76 +252,16 @@ const ContractorDashboard = memo(function ContractorDashboard() {
     if (!user?.id) return;
     
     try {
-      // Get contractor ID
-      const contractor = await ContractorAPI.getContractorByUserId(user.id);
-
-      if (!contractor) return;
-
-      // Get recent vehicles
-      const vehicles = await VehicleAPI.getContractorVehicles(contractor.id);
-      const recentVehicles = vehicles
-        .filter(v => !(v as any).is_deleted)
-        .sort((a, b) => new Date(b.check_in_time).getTime() - new Date(a.check_in_time).getTime())
-        .slice(0, 5);
-
-      // Get recent payments
-      const payments = await PaymentAPI.getContractorPayments(contractor.id, { page: 1, pageSize: 3 });
-      const recentPayments = payments.data || [];
-
-      // Combine and format activities
-      const activities = [];
-
-      // Add vehicle activities
-      recentVehicles?.forEach(vehicle => {
-        const timeAgo = getTimeAgo(vehicle.check_in_time);
-        const locationName = vehicle.location?.locations_name || 
-                           vehicle.parking_locations?.locations_name || 
-                           'Unknown';
-        activities.push({
-          id: `vehicle-${vehicle.id}`,
-          type: 'vehicle_checkin',
-          title: 'New vehicle check-in',
-          description: `Location: ${locationName}`,
-          timeAgo,
-          timestamp: vehicle.check_in_time,
-          icon: 'green'
-        });
-
-        if (vehicle.check_out_time) {
-          const checkoutTimeAgo = getTimeAgo(vehicle.check_out_time);
-          activities.push({
-            id: `vehicle-checkout-${vehicle.id}`,
-            type: 'vehicle_checkout',
-            title: 'Vehicle check-out',
-            description: `Plate: ${vehicle.plate_number}`,
-            timeAgo: checkoutTimeAgo,
-            timestamp: vehicle.check_out_time,
-            icon: 'blue'
-          });
-        }
-      });
-
-      // Add payment activities
-      recentPayments?.forEach(payment => {
-        const timeAgo = getTimeAgo(payment.created_at || '');
-        const plateNumber = payment.vehicle?.plate_number || 'Unknown';
-        activities.push({
-          id: `payment-${payment.id}`,
-          type: 'payment',
-          title: 'Payment received',
-          description: `₹${(payment.amount || 0).toFixed(2)} from Vehicle ${plateNumber}`,
-          timeAgo,
-          timestamp: payment.created_at || '',
-          icon: 'orange'
-        });
-      });
-
-      // Sort by timestamp and take the most recent 5
-      activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      setRecentActivity(activities.slice(0, 5));
-
+      setRecentActivityLoading(true);
+      // Fetch latest 10 records from the API
+      const activities = await ContractorDashboardAPI.getRecentActivity();
+      // API already returns latest 10 records, so use them directly
+      setRecentActivity(activities);
     } catch (error) {
       console.error('Error fetching recent activity:', error);
+      setRecentActivity([]);
+    } finally {
+      setRecentActivityLoading(false);
     }
   };
 
@@ -694,21 +635,61 @@ const ContractorDashboard = memo(function ContractorDashboard() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {recentActivity.length > 0 ? (
-                recentActivity.map((activity) => (
-                  <div key={activity.id} className="flex items-center space-x-3">
-                    <div className={`w-2 h-2 rounded-full ${
-                      activity.icon === 'green' ? 'bg-green-500' :
-                      activity.icon === 'blue' ? 'bg-blue-500' :
-                      activity.icon === 'orange' ? 'bg-orange-500' : 'bg-gray-500'
-                    }`}></div>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium">{activity.title}</p>
-                      <p className="text-xs text-muted-foreground">{activity.description}</p>
+              {recentActivityLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="text-muted-foreground">Loading recent activity...</div>
+                </div>
+              ) : recentActivity.length > 0 ? (
+                recentActivity.map((activity, index) => {
+                  const checkInTime = new Date(activity.check_in_time);
+                  const checkOutTime = activity.check_out_time ? new Date(activity.check_out_time) : null;
+                  const timeAgo = getTimeAgo(activity.created_on);
+                  
+                  return (
+                    <div key={index} className="flex items-start space-x-3 p-3 border rounded-lg hover:bg-white/20 transition-colors">
+                      <div className={`w-2 h-2 rounded-full mt-2 ${
+                        activity.payment_status === 'paid' ? 'bg-green-500' : 'bg-orange-500'
+                      }`}></div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="text-sm font-medium">
+                            {activity.attendant_name}
+                          </p>
+                          <Badge variant={activity.payment_status === 'paid' ? 'default' : 'secondary'} className="text-xs">
+                            {activity.payment_status}
+                          </Badge>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-xs text-muted-foreground">
+                            <span className="font-medium">Plate:</span> {activity.plate_number} • <span className="font-medium">Type:</span> {activity.vehicle_type}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            <span className="font-medium">Check-in:</span> {checkInTime.toLocaleString('en-IN', { 
+                              day: '2-digit', 
+                              month: 'short', 
+                              year: 'numeric',
+                              hour: '2-digit', 
+                              minute: '2-digit' 
+                            })}
+                            {checkOutTime && (
+                              <> • <span className="font-medium">Check-out:</span> {checkOutTime.toLocaleString('en-IN', { 
+                                day: '2-digit', 
+                                month: 'short', 
+                                year: 'numeric',
+                                hour: '2-digit', 
+                                minute: '2-digit' 
+                              })}</>
+                            )}
+                          </p>
+                          <p className="text-xs font-medium text-green-600">
+                            Amount: ₹{activity.amount}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">{timeAgo}</span>
                     </div>
-                    <span className="text-xs text-muted-foreground">{activity.timeAgo}</span>
-                  </div>
-                ))
+                  );
+                })
               ) : (
                 <div className="text-center py-4">
                   <p className="text-sm text-muted-foreground">No recent activity</p>

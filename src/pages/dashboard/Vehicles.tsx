@@ -503,7 +503,9 @@ export default function Vehicles() {
 
               if (contractorData && contractorData.id) {
                 const all = await VehicleAPI.getContractorVehicles(contractorData.id);
-                setVehicles(all);
+                // Ensure vehicles is always an array
+                const vehiclesArray = Array.isArray(all) ? all : (all?.data && Array.isArray(all.data) ? all.data : []);
+                setVehicles(vehiclesArray);
                 
                 // Set contractor rates for checkout calculation
                 // Parse rates if they're JSON strings
@@ -535,9 +537,11 @@ export default function Vehicles() {
                 
                 // Load contractor's locations
                 const locationsData = await ContractorAPI.getContractorLocations(contractorData.id);
+                // Ensure locationsData is always an array
+                const locationsArray = Array.isArray(locationsData) ? locationsData : (locationsData?.data && Array.isArray(locationsData.data) ? locationsData.data : []);
                 
                 // Filter active locations
-                const activeLocations = locationsData.filter(loc => 
+                const activeLocations = locationsArray.filter(loc => 
                   loc.is_deleted === false && loc.status === 'active'
                 );
                 
@@ -578,8 +582,10 @@ export default function Vehicles() {
 
   const grouped = useMemo(() => {
     if (!isSuperAdmin) return {} as { [k: string]: { [l: string]: Vehicle[] } };
+    // Ensure vehicles is always an array
+    const vehiclesArray = Array.isArray(vehicles) ? vehicles : [];
     const byContractor: { [k: string]: { [l: string]: Vehicle[] } } = {};
-    vehicles.forEach(v => {
+    vehiclesArray.forEach(v => {
       const contractorId = v.location?.contractor_id || "unknown";
       const locationName = v.location?.name || "Unknown Location";
       byContractor[contractorId] = byContractor[contractorId] || {};
@@ -590,12 +596,14 @@ export default function Vehicles() {
   }, [vehicles, isSuperAdmin]);
 
   const stats = useMemo(() => {
-    const totalVehicles = vehicles.length;
-    const currentlyParked = vehicles.filter(v => v.check_out_time === null).length;
-    const checkedOut = vehicles.filter(v => v.check_out_time !== null);
+    // Ensure vehicles is always an array
+    const vehiclesArray = Array.isArray(vehicles) ? vehicles : [];
+    const totalVehicles = vehiclesArray.length;
+    const currentlyParked = vehiclesArray.filter(v => v.check_out_time === null).length;
+    const checkedOut = vehiclesArray.filter(v => v.check_out_time !== null);
     
     // Calculate total revenue - ensure payment_amount is a valid number
-    const totalRevenue = vehicles.reduce((sum, v) => {
+    const totalRevenue = vehiclesArray.reduce((sum, v) => {
       if (!v.payment_amount) return sum;
       // Convert to number if it's a string, handle null/undefined
       let amount: number;
@@ -694,7 +702,9 @@ export default function Vehicles() {
       );
     };
 
-    return filterVehicles(vehicles.filter(v => v.check_out_time === null));
+    // Ensure vehicles is always an array
+    const vehiclesArray = Array.isArray(vehicles) ? vehicles : [];
+    return filterVehicles(vehiclesArray.filter(v => v.check_out_time === null));
   }, [vehicles, searchQuery]);
 
   const checkedOutVehicles = useMemo(() => {
@@ -711,7 +721,9 @@ export default function Vehicles() {
       );
     };
 
-    return filterVehicles(vehicles.filter(v => v.check_out_time !== null));
+    // Ensure vehicles is always an array
+    const vehiclesArray = Array.isArray(vehicles) ? vehicles : [];
+    return filterVehicles(vehiclesArray.filter(v => v.check_out_time !== null));
   }, [vehicles, searchQuery]);
   
 

@@ -3,33 +3,24 @@
  * Handles authentication and base URL configuration
  */
 
-// In development, use relative URLs to work with Vite proxy (avoids CORS)
-// In production, use the full URL from environment variable
+// Use the environment variable directly - no modifications
+// If VITE_API_BASE_URL is set, use it as-is
+// Example: VITE_API_BASE_URL="http://localhost:3000/apitest" → uses localhost
+// Example: VITE_API_BASE_URL="https://habbo.microlent.com/apitest" → uses live
 const getApiBaseURL = () => {
   const envUrl = import.meta.env.VITE_API_BASE_URL;
   
-  // If environment URL is set and it's a production URL (not localhost), use it directly
-  // This ensures consistency with login API which also uses the full production URL
-  if (envUrl && !envUrl.includes('localhost') && !envUrl.includes('127.0.0.1')) {
-    return envUrl;
+  // If environment URL is set, use it directly without any modifications
+  if (envUrl) {
+    return envUrl.trim();
   }
   
-  // In development mode, use relative URLs to leverage Vite proxy (avoids CORS issues)
+  // Fallback: use Vite proxy in development (only if env variable is not set)
   if (import.meta.env.DEV) {
-    // Check if the env URL contains /apitest (for local development)
-    if (envUrl && envUrl.includes('/apitest')) {
-      return '/apitest';
-    }
-    // Default to /apitest for development (consistent with production)
     return '/apitest';
   }
   
-  // In production, use the full URL from environment variable or fallback
-  if (envUrl) {
-    return envUrl;
-  }
-  
-  // Production fallback
+  // Production fallback (only if env variable is not set)
   return 'http://localhost:3000/apitest';
 };
 
@@ -56,27 +47,9 @@ class ApiClient {
   private baseURL: string;
 
   constructor(baseURL: string = API_BASE_URL) {
-    // Normalize base URL - remove trailing slashes
-    const normalizedURL = baseURL.trim().replace(/\/+$/, '');
-    
-    // If using relative URLs (for Vite proxy in development), use as-is
-    if (normalizedURL.startsWith('/')) {
-      this.baseURL = normalizedURL;
-      return;
-    }
-    
-    // Ensure /apitest is present for localhost (development) if URL doesn't already have a path
-    // Production server (habbo.microlent.com/apitest) already has /apitest
-    // Local: http://localhost:3000 → append /apitest
-    // Local with /apitest: http://localhost:3000/apitest → stays as is
-    // Live: https://habbo.microlent.com/apitest → stays as is
-    if ((normalizedURL.includes('localhost') || normalizedURL.includes('127.0.0.1')) && !normalizedURL.includes('/apitest') && !normalizedURL.includes('/api')) {
-      // Local development: ensure /apitest is present
-      this.baseURL = `${normalizedURL}/apitest`;
-    } else {
-      // Production or paths with /apitest: use base URL as-is
-      this.baseURL = normalizedURL;
-    }
+    // Use the base URL as-is - no modifications
+    // Just remove trailing slashes for consistency
+    this.baseURL = baseURL.trim().replace(/\/+$/, '');
   }
 
   /**
