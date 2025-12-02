@@ -21,6 +21,11 @@ export interface SubscriptionDetails {
   status: 'active' | 'expired' | 'suspended';
   days_remaining: number;
   is_valid: boolean;
+  price?: string | number;
+  days?: number;
+  max_locations?: number;
+  max_attendants?: number;
+  features?: any;
 }
 
 export class SubscriptionAPI {
@@ -40,6 +45,17 @@ export class SubscriptionAPI {
   static async getContractorSubscription(contractorId: string): Promise<SubscriptionDetails | null> {
     const response = await apiClient.get<SubscriptionDetails>(`/subscriptions/contractor/${contractorId}`);
     return response.data;
+  }
+
+  // Get current contractor's subscription details (using /me endpoint)
+  static async getMySubscription(): Promise<SubscriptionDetails | null> {
+    try {
+      const response = await apiClient.get<SubscriptionDetails>('/subscriptions/contractor/me');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching my subscription:', error);
+      return null;
+    }
   }
 
   // Assign subscription to contractor

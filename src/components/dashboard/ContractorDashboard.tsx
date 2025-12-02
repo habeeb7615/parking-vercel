@@ -153,9 +153,14 @@ const ContractorDashboard = memo(function ContractorDashboard() {
         return null;
       }
 
+      // Convert price to number if it's a string
+      const price = typeof subscription.price === 'string' 
+        ? parseFloat(subscription.price) || 0 
+        : subscription.price || 0;
+
       return {
         planName: subscription.plan_name || 'Unknown Plan',
-        price: 0, // Price not in subscription response, would need to fetch plan separately
+        price: price,
         startDate: subscription.start_date || '',
         endDate: subscription.end_date || '',
         status: subscription.status || 'active',
