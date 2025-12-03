@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Car, MapPin, Clock, Banknote, Trash2, Plus, Camera, Car as CarIcon, Bike, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { MetricCard } from "@/components/dashboard/MetricCard";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { VehicleAPI, Vehicle, CreateVehicleData } from "@/services/vehicleApi";
 import { OCRService } from "@/services/ocrService";
 import { useAuth } from "@/contexts/AuthContext";
@@ -29,6 +29,9 @@ import { LocationAPI } from "@/services/locationApi";
 export default function Vehicles() {
   const { profile } = useAuth();
   const { toast } = useToast();
+  
+  // Track if data has been fetched to prevent unnecessary re-fetches
+  const dataFetchedRef = useRef(false);
   
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [subscriptionBlocked, setSubscriptionBlocked] = useState(false);
@@ -241,7 +244,7 @@ export default function Vehicles() {
               <div>Check-out</div>
               <div>Duration</div>
               <div>Payment</div>
-              {!isAttendant && <div>Contractor Name</div>}
+              {!isAttendant && <div>Attendant Name</div>}
               {!isAttendant && <div>Location</div>}
               {isAttendant && <div>Actions</div>}
             </div>
@@ -281,7 +284,7 @@ export default function Vehicles() {
                   
                   {!isAttendant && (
                     <div className="text-gray-600 truncate">
-                      {vehicle.contractors?.company_name || vehicle.parking_locations?.contractors?.company_name || 'Unknown Contractor'}
+                      {vehicle.attendant?.name || 'Unknown Attendant'}
                     </div>
                   )}
                   
@@ -374,8 +377,8 @@ export default function Vehicles() {
                   </div>
                   {!isAttendant && (
                     <div className="flex items-center space-x-1">
-                      <span className="text-muted-foreground">Contractor:</span>
-                      <span className="truncate">{vehicle.contractors?.company_name || vehicle.parking_locations?.contractors?.company_name || 'Unknown'}</span>
+                      <span className="text-muted-foreground">Attendant:</span>
+                      <span className="truncate">{vehicle.attendant?.name || 'Unknown'}</span>
                     </div>
                   )}
                   {!isAttendant && (
@@ -429,8 +432,12 @@ export default function Vehicles() {
   }, [profile, toast]);
 
   useEffect(() => {
+    // Prevent duplicate calls if already fetched
+    if (dataFetchedRef.current) return;
+    
     const load = async () => {
       try {
+        dataFetchedRef.current = true;
         
         if (isSuperAdmin) {
           const all = await VehicleAPI.getAllVehicles();
@@ -498,8 +505,17 @@ export default function Vehicles() {
           // For contractors, load their vehicles
           if (profile?.id) {
             try {
-              // Get contractor by user ID
-              const contractorData = await ContractorAPI.getContractorByUserId(profile.id);
+              // Try to get contractor from localStorage first to avoid duplicate API calls
+              const { AuthAPI } = await import('@/services/authApi');
+              let contractorData = AuthAPI.getContractor();
+              
+              // If not in localStorage, fetch it
+              if (!contractorData) {
+                contractorData = await ContractorAPI.getContractorByUserId(profile.id);
+                if (contractorData) {
+                  AuthAPI.setContractor(contractorData);
+                }
+              }
 
               if (contractorData && contractorData.id) {
                 const all = await VehicleAPI.getContractorVehicles(contractorData.id);

@@ -43,6 +43,15 @@ export interface Vehicle {
     contact_number: string;
     status: string;
   };
+  attendant?: {
+    id: string;
+    user_id: string;
+    location_id: string;
+    status: string;
+    name: string;
+    email: string;
+    phone_number: string;
+  };
 }
 
 export interface CreateVehicleData {

@@ -111,7 +111,24 @@ const ContractorDashboard = memo(function ContractorDashboard() {
       setLoading(true);
       setError(null);
 
-      // Fetch dashboard data, stats, and subscription details
+      // Try to get contractor from localStorage first to avoid duplicate API calls
+      const { AuthAPI } = await import('@/services/authApi');
+      let contractor = AuthAPI.getContractor();
+      
+      // If not in localStorage, fetch it
+      if (!contractor) {
+        try {
+          contractor = await ContractorAPI.getContractorByUserId(user.id);
+          if (contractor) {
+            AuthAPI.setContractor(contractor);
+          }
+        } catch (error) {
+          console.error('Failed to fetch contractor data:', error);
+          contractor = null;
+        }
+      }
+
+      // Fetch dashboard data, stats, and subscription details in parallel
       const [dashboardDataResult, statsResult, subscriptionResult] = await Promise.all([
         ContractorDashboardAPI.getContractorDashboard(user.id),
         ContractorDashboardAPI.getContractorStats(user.id),
@@ -135,6 +152,14 @@ const ContractorDashboard = memo(function ContractorDashboard() {
         todayVehicles: 0
       });
       setSubscriptionDetails(subscriptionResult);
+
+      // If we have contractor data, also set rates to avoid separate API call
+      if (contractor) {
+        setRates({
+          rates_2wheeler: (contractor.rates_2wheeler as any) || rates.rates_2wheeler,
+          rates_4wheeler: (contractor.rates_4wheeler as any) || rates.rates_4wheeler
+        });
+      }
     } catch (error) {
       console.error('Error fetching contractor data:', error);
       setError(error instanceof Error ? error.message : 'Failed to fetch data');
@@ -173,14 +198,23 @@ const ContractorDashboard = memo(function ContractorDashboard() {
     }
   };
 
-  // Fetch contractor rates
+  // Fetch contractor rates (only if not already fetched in fetchContractorData)
   const fetchRates = async () => {
     if (!user?.id) return;
     
     try {
       setRatesLoading(true);
-      // Get contractor by user_id
-      const contractor = await ContractorAPI.getContractorByUserId(user.id);
+      // Try localStorage first to avoid duplicate API call
+      const { AuthAPI } = await import('@/services/authApi');
+      let contractor = AuthAPI.getContractor();
+      
+      // If not in localStorage, fetch it
+      if (!contractor) {
+        contractor = await ContractorAPI.getContractorByUserId(user.id);
+        if (contractor) {
+          AuthAPI.setContractor(contractor);
+        }
+      }
 
       if (contractor) {
         setRates({
@@ -333,9 +367,11 @@ const ContractorDashboard = memo(function ContractorDashboard() {
     if (user && !dataFetchedRef.current) {
       console.log('ContractorDashboard: Initial data fetch triggered');
       dataFetchedRef.current = true;
+      // fetchContractorData already fetches rates, so we don't need separate fetchRates call
       fetchContractorData();
       fetchRecentActivity();
-      fetchRates();
+      // Only fetch rates separately if needed (e.g., when user manually refreshes rates)
+      // fetchRates(); // Removed to avoid duplicate API call
     }
   }, [user?.id]);
 
