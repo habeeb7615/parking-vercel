@@ -12,8 +12,7 @@ import { ConfirmCheckoutDialog } from "@/components/ui/confirm-checkout-dialog";
 import { ConfirmCheckinDialog } from "@/components/ui/confirm-checkin-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Car, MapPin, Clock, Banknote, Trash2, Plus, Camera, Car as CarIcon, Bike, ChevronLeft, ChevronRight, Search } from "lucide-react";
-import { MetricCard } from "@/components/dashboard/MetricCard";
+import { Car, Trash2, Plus, Camera, Car as CarIcon, Bike, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { useEffect, useMemo, useState, useRef } from "react";
 import { VehicleAPI, Vehicle, CreateVehicleData } from "@/services/vehicleApi";
 import { OCRService } from "@/services/ocrService";
@@ -1081,54 +1080,22 @@ export default function Vehicles() {
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-        <MetricCard
-          title="Total Vehicles"
-          value={stats.totalVehicles}
-          description="All time"
-          icon={Car}
-          variant="info"
-        />
-        <MetricCard
-          title="Currently Parked"
-          value={stats.currentlyParked}
-          description="Active sessions"
-          icon={MapPin}
-          variant="warning"
-        />
-        <MetricCard
-          title="Average Duration"
-          value={`${stats.averageDuration}h`}
-          description="Per session"
-          icon={Clock}
-          variant="default"
-        />
-        <MetricCard
-          title="Total Revenue"
-          value={`₹${stats.totalRevenue}`}
-          description="From vehicles"
-          icon={Banknote}
-          variant="success"
-        />
-      </div>
-
-      {/* Search Filter */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-4">
-        <div className="relative flex-1">
+      {/* Search and Filters */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
+        <div className="relative flex-1 sm:max-w-md">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
           <Input
-            placeholder="Search vehicles by plate number, location, mobile number..."
+            placeholder="Search by plate, location, mobile..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
+            className="pl-10 h-9 text-sm"
           />
         </div>
         {searchQuery && (
           <Button
             variant="outline"
             onClick={() => setSearchQuery("")}
-            className="text-gray-500 w-full sm:w-auto"
+            className="text-gray-500 w-full sm:w-auto h-9 text-sm"
           >
             Clear
           </Button>
