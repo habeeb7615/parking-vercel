@@ -267,15 +267,27 @@ export default function CheckInOut() {
 
     setProcessing(true);
     try {
+      // Store original check_in_time before checkout
+      const originalCheckInTime = selectedVehicle.check_in_time;
+      
       // Get current UTC time
       const now = new Date();
       const checkoutData = {
         check_out_time: now.toISOString(), // Already in UTC format (ISO 8601 with Z suffix)
         payment_amount: 0, // Will be calculated by the API
-        payment_method: paymentMethod,
+        payment_method: paymentMethod
       };
 
+      console.log('CheckInOut: Checkout data being sent:', {
+        check_out_time: checkoutData.check_out_time,
+        payment_amount: checkoutData.payment_amount,
+        original_check_in_time: originalCheckInTime
+      });
+
       await VehicleAPI.checkoutVehicle(selectedVehicle.id, checkoutData);
+      
+      // Note: Backend should not update check_in_time, but if it does, 
+      // we'll detect it after refetching the data
       
       // Calculate checkout amount for success modal
       const duration = Math.floor((new Date().getTime() - new Date(selectedVehicle.check_in_time).getTime()) / (1000 * 60 * 60));

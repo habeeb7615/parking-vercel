@@ -83,6 +83,7 @@ export interface VehicleCheckoutData {
   check_out_time: string;
   payment_amount: number;
   payment_method: 'cash' | 'card' | 'digital' | 'free';
+  check_in_time?: string; // Preserve original check_in_time
 }
 
 export class VehicleAPI {
@@ -171,6 +172,8 @@ export class VehicleAPI {
 
   // Attendant only - Check out vehicle
   static async checkoutVehicle(vehicleId: string, checkoutData: VehicleCheckoutData): Promise<Vehicle> {
+    // Backend doesn't accept check_in_time in checkout request
+    // Only send the fields that backend expects
     const response = await apiClient.post<Vehicle>(`/vehicles/checkout/${vehicleId}`, {
       check_out_time: checkoutData.check_out_time,
       payment_amount: checkoutData.payment_amount,
@@ -230,5 +233,37 @@ export class VehicleAPI {
   // Delete vehicle
   static async deleteVehicle(vehicleId: string): Promise<void> {
     await apiClient.get(`/vehicles/delete/${vehicleId}`);
+  }
+
+  // Get vehicles with pagination
+  static async getVehiclesWithPagination(params: {
+    curPage: number;
+    perPage: number;
+    sortBy?: string;
+    direction?: 'asc' | 'desc';
+    whereClause?: Array<{ key: string; value: string }>;
+  }): Promise<{
+    data: Vehicle[];
+    count: number;
+    curPage: number;
+    perPage: number;
+    totalPages: number;
+    statusCode: number;
+  }> {
+    const response = await apiClient.post<{
+      data: Vehicle[];
+      count: number;
+      curPage: number;
+      perPage: number;
+      totalPages: number;
+      statusCode: number;
+    }>('/vehicles/pagination', {
+      curPage: params.curPage,
+      perPage: params.perPage,
+      sortBy: params.sortBy || 'created_on',
+      direction: params.direction || 'desc',
+      whereClause: params.whereClause || []
+    });
+    return response.data;
   }
 }

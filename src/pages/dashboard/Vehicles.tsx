@@ -62,6 +62,13 @@ export default function Vehicles() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeTab, setActiveTab] = useState("all");
+  const [paginationMeta, setPaginationMeta] = useState<{
+    count: number;
+    curPage: number;
+    perPage: number;
+    totalPages: number;
+  } | null>(null);
   const isSuperAdmin = profile?.role === "super_admin";
   const isAttendant = profile?.role === "attendant";
   const isContractor = profile?.role === "contractor";
@@ -120,12 +127,10 @@ export default function Vehicles() {
   };
 
   const PaginationComponent = ({ vehicleList }: { vehicleList: Vehicle[] }) => {
-    const totalPages = getTotalPages(vehicleList);
-    const paginatedVehicles = getPaginatedVehicles(vehicleList);
+    // Use API pagination metadata if available, otherwise fallback to client-side
+    const totalPages = paginationMeta?.totalPages || getTotalPages(vehicleList);
+    const paginatedVehicles = vehicleList; // API already returns paginated data
     
-    // Always show pagination component, even for small datasets
-    // This ensures per page selector is always visible
-
     const getPageNumbers = () => {
       const pages = [];
       const maxVisiblePages = 5;
@@ -230,7 +235,8 @@ export default function Vehicles() {
   };
 
   const renderVehicleTable = (vehicleList: Vehicle[]) => {
-    const paginatedVehicles = getPaginatedVehicles(vehicleList);
+    // API already returns paginated data, so use vehicleList directly
+    const paginatedVehicles = vehicleList;
     
     return (
       <div>
@@ -455,6 +461,99 @@ export default function Vehicles() {
     }
   }, [profile?.role, profile?.id, vehicles.length, toast]);
 
+  // Fetch vehicles with pagination
+  const fetchVehiclesWithPagination = async (page: number = currentPage, statusFilter?: string) => {
+    try {
+      setLoading(true);
+      
+      // Build whereClause based on status filter
+      // Map tab values to API status values
+      const whereClause: Array<{ key: string; value: string }> = [];
+      if (statusFilter === 'parked') {
+        whereClause.push({ key: 'status', value: 'checked_in' });
+      } else if (statusFilter === 'checked-out') {
+        whereClause.push({ key: 'status', value: 'checked_out' });
+      }
+      
+      const response = await VehicleAPI.getVehiclesWithPagination({
+        curPage: page,
+        perPage: itemsPerPage,
+        sortBy: 'created_on',
+        direction: 'desc',
+        whereClause: whereClause
+      });
+      
+      const fetchedVehicles = response.data || [];
+      setVehicles(fetchedVehicles);
+      setPaginationMeta({
+        count: response.count,
+        curPage: response.curPage,
+        perPage: response.perPage,
+        totalPages: response.totalPages
+      });
+      
+      // Extract location and contractor data from vehicle response (for attendants)
+      if (isAttendant && fetchedVehicles.length > 0) {
+        const firstVehicle = fetchedVehicles[0];
+        
+        // Extract location from vehicle response
+        if (firstVehicle.parking_locations) {
+          const location = {
+            id: firstVehicle.location_id,
+            locations_name: firstVehicle.parking_locations.locations_name,
+            address: firstVehicle.parking_locations.address,
+            contractor_id: firstVehicle.parking_locations.contractor_id || firstVehicle.contractor_id,
+            ...firstVehicle.parking_locations
+          };
+          setLocations([location]);
+          setNewVehicle(prev => ({
+            ...prev,
+            location_id: location.id || '',
+            contractor_id: location.contractor_id || ''
+          }));
+        }
+        
+        // Extract contractor rates from vehicle response
+        if (firstVehicle.contractors) {
+          const contractor = firstVehicle.contractors;
+          // Parse rates if they're JSON strings
+          let rates2w, rates4w;
+          try {
+            rates2w = typeof contractor.rates_2wheeler === 'string' 
+              ? JSON.parse(contractor.rates_2wheeler) 
+              : contractor.rates_2wheeler;
+            rates4w = typeof contractor.rates_4wheeler === 'string' 
+              ? JSON.parse(contractor.rates_4wheeler) 
+              : contractor.rates_4wheeler;
+          } catch (e) {
+            console.error('Error parsing rates:', e);
+            rates2w = contractor.rates_2wheeler ?? null;
+            rates4w = contractor.rates_4wheeler ?? null;
+          }
+          
+          setContractorRates({
+            rates_2wheeler: rates2w,
+            rates_4wheeler: rates4w
+          });
+        }
+      }
+      
+      return fetchedVehicles;
+    } catch (error: any) {
+      console.error('Error loading vehicles:', error);
+      toast({
+        variant: "destructive",
+        title: "Error Loading Vehicles",
+        description: error?.message || "Failed to load vehicles. Please try again later.",
+      });
+      setVehicles([]);
+      setPaginationMeta(null);
+      return [];
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     // Prevent duplicate calls if already fetched
     if (dataFetchedRef.current) return;
@@ -463,70 +562,16 @@ export default function Vehicles() {
       try {
         dataFetchedRef.current = true;
         
-        if (isSuperAdmin) {
-          const all = await VehicleAPI.getAllVehicles();
-          setVehicles(all || []);
-        } else if (isAttendant) {
-          // For attendants, load their vehicles
-          const all = await VehicleAPI.getAttendantVehicles();
-          // Ensure vehicles is always an array
-          const vehiclesArray = Array.isArray(all) ? all : [];
-          setVehicles(vehiclesArray);
+        if (isSuperAdmin || isAttendant || isContractor) {
+          // Use pagination API for all roles
+          await fetchVehiclesWithPagination(1, activeTab === 'all' ? undefined : activeTab);
           
-          // Extract location and contractor data from vehicle response to avoid duplicate API calls
-          if (vehiclesArray.length > 0) {
-            const firstVehicle = vehiclesArray[0];
-            
-            // Extract location from vehicle response
-            if (firstVehicle.parking_locations) {
-              const location = {
-                id: firstVehicle.location_id,
-                locations_name: firstVehicle.parking_locations.locations_name,
-                address: firstVehicle.parking_locations.address,
-                contractor_id: firstVehicle.parking_locations.contractor_id || firstVehicle.contractor_id,
-                ...firstVehicle.parking_locations
-              };
-              setLocations([location]);
-              setNewVehicle(prev => ({
-                ...prev,
-                location_id: location.id || '',
-                contractor_id: location.contractor_id || ''
-              }));
-            }
-            
-            // Extract contractor rates from vehicle response
-            if (firstVehicle.contractors) {
-              const contractor = firstVehicle.contractors;
-              // Parse rates if they're JSON strings
-              let rates2w, rates4w;
-              try {
-                rates2w = typeof contractor.rates_2wheeler === 'string' 
-                  ? JSON.parse(contractor.rates_2wheeler) 
-                  : contractor.rates_2wheeler;
-                rates4w = typeof contractor.rates_4wheeler === 'string' 
-                  ? JSON.parse(contractor.rates_4wheeler) 
-                  : contractor.rates_4wheeler;
-              } catch (e) {
-                console.error('Error parsing rates:', e);
-                rates2w = contractor.rates_2wheeler ?? null;
-                rates4w = contractor.rates_4wheeler ?? null;
-              }
-              
-              setContractorRates({
-                rates_2wheeler: rates2w,
-                rates_4wheeler: rates4w
-              });
-            }
-          }
-        } else if (isContractor) {
-          // For contractors, load their vehicles
-          if (profile?.id) {
+          // For contractors, also load locations and rates
+          if (isContractor && profile?.id) {
             try {
-              // Try to get contractor from localStorage first to avoid duplicate API calls
               const { AuthAPI } = await import('@/services/authApi');
               let contractorData = AuthAPI.getContractor();
               
-              // If not in localStorage, fetch it
               if (!contractorData) {
                 contractorData = await ContractorAPI.getContractorByUserId(profile.id);
                 if (contractorData) {
@@ -534,14 +579,8 @@ export default function Vehicles() {
                 }
               }
 
-            if (contractorData && contractorData.id) {
-              const all = await VehicleAPI.getContractorVehicles(contractorData.id);
-              // Ensure vehicles is always an array
-              const vehiclesArray = Array.isArray(all) ? all : [];
-              setVehicles(vehiclesArray);
-                
+              if (contractorData && contractorData.id) {
                 // Set contractor rates for checkout calculation
-                // Parse rates if they're JSON strings
                 let rates2w, rates4w;
                 try {
                   rates2w = typeof contractorData.rates_2wheeler === 'string' 
@@ -556,13 +595,6 @@ export default function Vehicles() {
                   rates4w = contractorData.rates_4wheeler;
                 }
                 
-                console.log('Vehicles: Setting contractor rates for contractor', { 
-                  rates2w, 
-                  rates4w,
-                  original2w: contractorData.rates_2wheeler,
-                  original4w: contractorData.rates_4wheeler
-                });
-                
                 setContractorRates({
                   rates_2wheeler: rates2w,
                   rates_4wheeler: rates4w
@@ -570,28 +602,15 @@ export default function Vehicles() {
                 
                 // Load contractor's locations
                 const locationsData = await ContractorAPI.getContractorLocations(contractorData.id);
-                // Ensure locationsData is always an array
                 const locationsArray = Array.isArray(locationsData) ? locationsData : [];
-                
-                // Filter active locations
                 const activeLocations = locationsArray.filter(loc => 
                   loc.is_deleted === false && loc.status === 'active'
                 );
-                
                 setLocations(activeLocations);
-              } else {
-                // If no contractor record found, show empty list
-                setVehicles([]);
-                setLocations([]);
               }
             } catch (error) {
               console.error('Error loading contractor data:', error);
-              setVehicles([]);
-              setLocations([]);
             }
-          } else {
-            setVehicles([]);
-            setLocations([]);
           }
         } else {
           setVehicles([]);
@@ -612,6 +631,25 @@ export default function Vehicles() {
     };
     load();
   }, [isSuperAdmin, isAttendant, isContractor, profile?.id]);
+
+  // Refetch when tab changes
+  useEffect(() => {
+    if (dataFetchedRef.current) {
+      const statusFilter = activeTab === 'all' ? undefined : activeTab;
+      fetchVehiclesWithPagination(1, statusFilter);
+      setCurrentPage(1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  // Refetch when page or itemsPerPage changes
+  useEffect(() => {
+    if (dataFetchedRef.current && paginationMeta) {
+      const statusFilter = activeTab === 'all' ? undefined : activeTab;
+      fetchVehiclesWithPagination(currentPage, statusFilter);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage, itemsPerPage]);
 
   const grouped = useMemo(() => {
     if (!isSuperAdmin) return {} as { [k: string]: { [l: string]: Vehicle[] } };
@@ -762,7 +800,7 @@ export default function Vehicles() {
   }, [vehicles, searchQuery]);
   
 
-  // Pagination logic
+  // Pagination logic (fallback for when API pagination is not available)
   const getPaginatedVehicles = (vehicleList: Vehicle[]) => {
     const startIndex = (currentPage - 1) * itemsPerPage;
     const endIndex = startIndex + itemsPerPage;
@@ -775,6 +813,8 @@ export default function Vehicles() {
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
+    // Scroll to top when page changes
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleItemsPerPageChange = (newItemsPerPage: number) => {
@@ -799,11 +839,7 @@ export default function Vehicles() {
   const handleConfirmCheckin = async () => {
     try {
       setLoading(true);
-      const vehicle = await VehicleAPI.createVehicle(newVehicle);
-      setVehicles(prev => {
-        const prevArray = Array.isArray(prev) ? prev : [];
-        return [vehicle, ...prevArray];
-      });
+      await VehicleAPI.createVehicle(newVehicle);
       setNewVehicle({
         plate_number: '',
         vehicle_type: '4-wheeler',
@@ -813,6 +849,9 @@ export default function Vehicles() {
       });
       setShowAddVehicle(false);
       setShowConfirmCheckin(false);
+      // Refetch vehicles after adding
+      const statusFilter = activeTab === 'all' ? undefined : activeTab;
+      await fetchVehiclesWithPagination(currentPage, statusFilter);
     } catch (error) {
       console.error('Error adding vehicle:', error);
       alert('Error adding vehicle: ' + (error as Error).message);
@@ -852,6 +891,9 @@ export default function Vehicles() {
     try {
       setLoading(true);
       console.log('Vehicles: Starting checkout API call...');
+      // Store original check_in_time before checkout
+      const originalCheckInTime = selectedVehicle.check_in_time;
+      
       // Get current UTC time
       const now = new Date();
       const checkoutData = {
@@ -860,16 +902,42 @@ export default function Vehicles() {
         payment_method: data.payment_method as 'cash' | 'card' | 'digital' | 'free'
       };
       
-      const updatedVehicle = await VehicleAPI.checkoutVehicle(selectedVehicle.id, checkoutData);
-      // Preserve original check_in_time if backend incorrectly updates it
-      const vehicleToUpdate = {
-        ...updatedVehicle,
-        check_in_time: selectedVehicle.check_in_time // Keep original check_in_time
-      };
-      setVehicles(prev => {
-        const prevArray = Array.isArray(prev) ? prev : [];
-        return prevArray.map(v => v.id === selectedVehicle.id ? vehicleToUpdate : v);
+      console.log('Vehicles: Checkout data being sent:', {
+        check_out_time: checkoutData.check_out_time,
+        payment_amount: checkoutData.payment_amount,
+        original_check_in_time: originalCheckInTime,
+        original_check_in_time_parsed: new Date(originalCheckInTime).toISOString()
       });
+      
+      const response = await VehicleAPI.checkoutVehicle(selectedVehicle.id, checkoutData);
+      
+      // Check if backend incorrectly updated check_in_time
+      if (response && response.check_in_time) {
+        const receivedCheckInTime = new Date(response.check_in_time).toISOString();
+        const originalCheckInTimeISO = new Date(originalCheckInTime).toISOString();
+        
+        if (receivedCheckInTime !== originalCheckInTimeISO) {
+          const timeDiff = new Date(receivedCheckInTime).getTime() - new Date(originalCheckInTimeISO).getTime();
+          const hoursDiff = timeDiff / (1000 * 60 * 60);
+          
+          console.error('Vehicles: CRITICAL - Backend updated check_in_time during checkout!', {
+            original: originalCheckInTime,
+            original_iso: originalCheckInTimeISO,
+            received: response.check_in_time,
+            received_iso: receivedCheckInTime,
+            time_difference_hours: hoursDiff,
+            time_difference_ms: timeDiff
+          });
+          
+          toast({
+            variant: "destructive",
+            title: "Warning: Check-in Time Changed",
+            description: `Backend incorrectly updated check_in_time by ${hoursDiff.toFixed(2)} hours. This is a backend bug that needs to be fixed.`,
+          });
+        } else {
+          console.log('Vehicles: check_in_time preserved correctly');
+        }
+      }
       
       // Calculate duration
       const checkInTime = new Date(selectedVehicle.check_in_time);
@@ -890,6 +958,32 @@ export default function Vehicles() {
       // Close checkout dialog and show success dialog
       setShowCheckout(false);
       setShowSuccessDialog(true);
+      
+      // Refetch vehicles after checkout and verify check_in_time
+      const statusFilter = activeTab === 'all' ? undefined : activeTab;
+      const refetchedVehicles = await fetchVehiclesWithPagination(currentPage, statusFilter);
+      
+      // After refetch, check if check_in_time was changed
+      const refetchedVehicle = refetchedVehicles.find(v => v.id === selectedVehicle.id);
+      if (refetchedVehicle && refetchedVehicle.check_in_time !== originalCheckInTime) {
+        const timeDiff = new Date(refetchedVehicle.check_in_time).getTime() - new Date(originalCheckInTime).getTime();
+        const hoursDiff = timeDiff / (1000 * 60 * 60);
+        console.error('Vehicles: After refetch - check_in_time was changed by backend!', {
+          vehicle_id: selectedVehicle.id,
+          plate_number: selectedVehicle.plate_number,
+          original_check_in_time: originalCheckInTime,
+          refetched_check_in_time: refetchedVehicle.check_in_time,
+          difference_hours: hoursDiff,
+          difference_minutes: timeDiff / (1000 * 60)
+        });
+        
+        toast({
+          variant: "destructive",
+          title: "Backend Bug Detected",
+          description: `check_in_time was incorrectly updated by ${hoursDiff.toFixed(2)} hours. Please report this to the backend team.`,
+        });
+      }
+      
       // Don't clear selectedVehicle yet - let success dialog use it
     } catch (error: any) {
       console.error('Error during checkout:', error);
@@ -985,12 +1079,6 @@ export default function Vehicles() {
             View all vehicle activity from your locations with assigned attendants.
           </p>
         </div>
-        {isAttendant && (
-          <Button onClick={() => setShowAddVehicle(true)} className="w-full sm:w-auto">
-            <Plus className="h-4 w-4 mr-2" />
-            Add Vehicle
-          </Button>
-        )}
       </div>
 
       {/* Stats Cards */}
@@ -1048,7 +1136,7 @@ export default function Vehicles() {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="all" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3">
           <TabsTrigger value="all" className="text-xs sm:text-sm">All Vehicles</TabsTrigger>
           <TabsTrigger value="parked" className="text-xs sm:text-sm">Currently Parked</TabsTrigger>
