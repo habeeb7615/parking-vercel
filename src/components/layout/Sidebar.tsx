@@ -40,6 +40,12 @@ const navigation: NavItem[] = [
     roles: ["super_admin", "contractor", "attendant"],
   },
   {
+    title: "Check In/Out",
+    href: "/dashboard/check-inout",
+    icon: UserPlus,
+    roles: ["attendant"],
+  },
+  {
     title: "Contractors",
     href: "/dashboard/contractors",
     icon: Building,
@@ -73,12 +79,6 @@ const navigation: NavItem[] = [
     title: "QR Scanner",
     href: "/dashboard/qr-scanner",
     icon: QrCode,
-    roles: ["attendant"],
-  },
-  {
-    title: "Check In/Out",
-    href: "/dashboard/check-inout",
-    icon: UserPlus,
     roles: ["attendant"],
   },
   {
