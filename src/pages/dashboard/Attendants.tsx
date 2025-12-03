@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious, PaginationEllipsis } from "@/components/ui/pagination";
-import { Users, Plus, MapPin, Clock, CheckCircle, Search, ArrowUpDown, Edit, Trash2, X, Eye, EyeOff } from "lucide-react";
+import { Users, Plus, MapPin, Clock, CheckCircle, Search, ArrowUpDown, Edit, Trash2, X, Eye, EyeOff, Car, Banknote, LogIn, LogOut } from "lucide-react";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { useToast } from "@/hooks/use-toast";
 import { AttendantAPI, type Attendant, type PaginatedResponse, type PaginationParams } from "@/services/attendantApi";
@@ -16,6 +16,7 @@ import { SuperAdminAPI, type CreateAttendantData } from "@/services/superAdminAp
 import { ContractorAPI } from "@/services/contractorApi";
 import { useAuth } from "@/contexts/AuthContext";
 import { LocationAPI } from "@/services/locationApi";
+import { VehicleAPI, type Vehicle } from "@/services/vehicleApi";
 
 const Attendants = memo(function Attendants() {
   const { profile, user } = useAuth();
@@ -32,6 +33,7 @@ const Attendants = memo(function Attendants() {
   const [contractorData, setContractorData] = useState<any>(null); // For contractor limit checking
   const [formLoading, setFormLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]); // For attendant vehicle stats
   const [form, setForm] = useState<Partial<CreateAttendantData>>({
     user_name: "",
     email: "",
@@ -61,13 +63,69 @@ const Attendants = memo(function Attendants() {
   const { toast } = useToast();
 
   const stats = useMemo(() => {
+    // For attendants, calculate vehicle stats
+    if (isAttendant) {
+      const vehiclesArray = Array.isArray(vehicles) ? vehicles : [];
+      const totalVehicles = vehiclesArray.length;
+      const totalCheckIns = vehiclesArray.filter(v => v.check_in_time).length;
+      const totalCheckOuts = vehiclesArray.filter(v => v.check_out_time).length;
+      const currentlyParked = vehiclesArray.filter(v => !v.check_out_time).length;
+      
+      // Calculate total revenue
+      const totalRevenue = vehiclesArray.reduce((sum, v) => {
+        if (!v.payment_amount) return sum;
+        let amount: number;
+        if (typeof v.payment_amount === 'number') {
+          amount = v.payment_amount;
+        } else if (typeof v.payment_amount === 'string') {
+          const parsed = parseFloat(v.payment_amount);
+          amount = isNaN(parsed) ? 0 : parsed;
+        } else {
+          amount = 0;
+        }
+        return sum + (amount > 0 && isFinite(amount) ? amount : 0);
+      }, 0);
+      
+      // Calculate today's revenue
+      const today = new Date().toISOString().split('T')[0];
+      const todayRevenue = vehiclesArray
+        .filter(v => {
+          if (!v.check_out_time) return false;
+          const checkoutDate = new Date(v.check_out_time).toISOString().split('T')[0];
+          return checkoutDate === today;
+        })
+        .reduce((sum, v) => {
+          if (!v.payment_amount) return sum;
+          let amount: number;
+          if (typeof v.payment_amount === 'number') {
+            amount = v.payment_amount;
+          } else if (typeof v.payment_amount === 'string') {
+            const parsed = parseFloat(v.payment_amount);
+            amount = isNaN(parsed) ? 0 : parsed;
+          } else {
+            amount = 0;
+          }
+          return sum + (amount > 0 && isFinite(amount) ? amount : 0);
+        }, 0);
+      
+      return {
+        totalVehicles,
+        totalCheckIns,
+        totalCheckOuts,
+        currentlyParked,
+        totalRevenue: Math.round(totalRevenue * 100) / 100,
+        todayRevenue: Math.round(todayRevenue * 100) / 100
+      };
+    }
+    
+    // For super admin and contractor, show attendant management stats
     return {
       totalAttendants: pagination.totalCount,
       activeAttendants: attendants.filter(a => a.status === 'active').length,
       assignedLocations: attendants.filter(a => a.location_id).length,
       averageHours: 0 // This would be calculated from actual work data
     };
-  }, [attendants, pagination.totalCount]);
+  }, [attendants, pagination.totalCount, vehicles, isAttendant]);
 
   const fetchData = async (page = pagination.page, searchTerm = search, sort = sortBy, order = sortOrder) => {
     try {
@@ -123,6 +181,16 @@ const Attendants = memo(function Attendants() {
           pageSize: 1,
           totalPages: 1
         };
+        
+        // Fetch vehicles for attendant stats
+        try {
+          const allVehicles = await VehicleAPI.getAttendantVehicles(user.id);
+          const vehiclesArray = Array.isArray(allVehicles) ? allVehicles : [];
+          setVehicles(vehiclesArray);
+        } catch (error) {
+          console.error('Error fetching vehicles for attendant:', error);
+          setVehicles([]);
+        }
       } else {
         // For super admins, show all attendants
         attendantsResult = await AttendantAPI.getAllAttendants(params);
@@ -399,10 +467,12 @@ const Attendants = memo(function Attendants() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Attendants</h1>
+          <h1 className="text-3xl font-bold text-foreground">
+            {isAttendant ? 'Dashboard' : 'Attendants'}
+          </h1>
           <p className="text-muted-foreground">
             {profile?.role === 'attendant' 
-              ? 'View your profile and assignment details'
+              ? 'View your vehicle statistics and performance'
               : 'Manage on-site staff and their assignments'
             }
           </p>
@@ -416,35 +486,84 @@ const Attendants = memo(function Attendants() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <MetricCard
-          title="Total Attendants"
-          value={stats.totalAttendants}
-          description="Registered staff"
-          icon={Users}
-          variant="info"
-        />
-        <MetricCard
-          title="Active Attendants"
-          value={stats.activeAttendants}
-          description="Currently working"
-          icon={CheckCircle}
-          variant="success"
-        />
-        <MetricCard
-          title="Assigned Locations"
-          value={stats.assignedLocations}
-          description="Active assignments"
-          icon={MapPin}
-          variant="warning"
-        />
-        <MetricCard
-          title="Average Hours"
-          value={`${stats.averageHours}h`}
-          description="Per day"
-          icon={Clock}
-          variant="default"
-        />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
+        {isAttendant ? (
+          <>
+            <MetricCard
+              title="Total Vehicles"
+              value={stats.totalVehicles || 0}
+              description="All time"
+              icon={Car}
+              variant="info"
+            />
+            <MetricCard
+              title="Total Check In"
+              value={stats.totalCheckIns || 0}
+              description="Vehicles checked in"
+              icon={LogIn}
+              variant="success"
+            />
+            <MetricCard
+              title="Total Check Out"
+              value={stats.totalCheckOuts || 0}
+              description="Vehicles checked out"
+              icon={LogOut}
+              variant="warning"
+            />
+            <MetricCard
+              title="Currently Parked"
+              value={stats.currentlyParked || 0}
+              description="Active sessions"
+              icon={MapPin}
+              variant="default"
+            />
+            <MetricCard
+              title="Total Revenue"
+              value={`₹${(stats.totalRevenue || 0).toFixed(2)}`}
+              description="All time earnings"
+              icon={Banknote}
+              variant="success"
+            />
+            <MetricCard
+              title="Today's Revenue"
+              value={`₹${(stats.todayRevenue || 0).toFixed(2)}`}
+              description="Today's earnings"
+              icon={Banknote}
+              variant="info"
+            />
+          </>
+        ) : (
+          <>
+            <MetricCard
+              title="Total Attendants"
+              value={stats.totalAttendants}
+              description="Registered staff"
+              icon={Users}
+              variant="info"
+            />
+            <MetricCard
+              title="Active Attendants"
+              value={stats.activeAttendants}
+              description="Currently working"
+              icon={CheckCircle}
+              variant="success"
+            />
+            <MetricCard
+              title="Assigned Locations"
+              value={stats.assignedLocations}
+              description="Active assignments"
+              icon={MapPin}
+              variant="warning"
+            />
+            <MetricCard
+              title="Average Hours"
+              value={`${stats.averageHours}h`}
+              description="Per day"
+              icon={Clock}
+              variant="default"
+            />
+          </>
+        )}
       </div>
 
       {/* Attendants List */}
