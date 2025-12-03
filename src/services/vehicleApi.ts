@@ -4,7 +4,7 @@ import { logger } from './loggerService';
 export interface Vehicle {
   id: string;
   plate_number: string;
-  vehicle_type: 'car' | 'motorcycle' | 'truck' | 'bus';
+  vehicle_type: '2-wheeler' | '4-wheeler';
   check_in_time: string;
   check_out_time?: string;
   location_id: string;
@@ -42,6 +42,21 @@ export interface Vehicle {
     company_name: string;
     contact_number: string;
     status: string;
+    rates_2wheeler?: any;
+    rates_4wheeler?: any;
+    profiles?: {
+      user_name: string;
+      email: string;
+      phone_number?: string;
+      subscription_plan_id?: string;
+      subscription_start_date?: string;
+      subscription_end_date?: string;
+      subscription_status?: string;
+      subscription_plans?: {
+        name: string;
+        price: number;
+      };
+    };
   };
   attendant?: {
     id: string;
@@ -143,7 +158,15 @@ export class VehicleAPI {
   // Get vehicles by location
   static async getVehiclesByLocation(locationId: string): Promise<Vehicle[]> {
     const response = await apiClient.get<Vehicle[]>(`/vehicles/location/${locationId}`);
-    return response.data || [];
+    // Handle different response structures
+    if (Array.isArray(response.data)) {
+      return response.data;
+    }
+    // If response.data is an object with a data property (nested structure)
+    if (response.data && typeof response.data === 'object' && 'data' in response.data && Array.isArray(response.data.data)) {
+      return response.data.data;
+    }
+    return [];
   }
 
   // Attendant only - Check out vehicle

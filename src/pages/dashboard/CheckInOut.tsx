@@ -139,11 +139,14 @@ export default function CheckInOut() {
       const { VehicleAPI } = await import('@/services/vehicleApi');
       const allVehicles = await VehicleAPI.getVehiclesByLocation(attendant.location_id);
       
+      // Ensure allVehicles is always an array
+      const vehiclesArray = Array.isArray(allVehicles) ? allVehicles : [];
+      
       // Filter only parked vehicles (check_out_time is null)
-      const parkedVehicles = allVehicles.filter(v => !v.check_out_time).slice(0, 5);
+      const parkedVehicles = vehiclesArray.filter(v => !v.check_out_time).slice(0, 5);
       
       // Calculate actual occupied slots
-      const totalParkedCount = allVehicles.filter(v => !v.check_out_time).length;
+      const totalParkedCount = vehiclesArray.filter(v => !v.check_out_time).length;
       setActualOccupiedSlots(totalParkedCount);
 
       setVehicles(parkedVehicles || []);

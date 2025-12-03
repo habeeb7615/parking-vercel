@@ -465,12 +465,12 @@ export default function Vehicles() {
         
         if (isSuperAdmin) {
           const all = await VehicleAPI.getAllVehicles();
-          setVehicles(all);
+          setVehicles(all || []);
         } else if (isAttendant) {
           // For attendants, load their vehicles
           const all = await VehicleAPI.getAttendantVehicles();
           // Ensure vehicles is always an array
-          const vehiclesArray = Array.isArray(all) ? all : (all?.data && Array.isArray(all.data) ? all.data : []);
+          const vehiclesArray = Array.isArray(all) ? all : [];
           setVehicles(vehiclesArray);
           
           // Extract location and contractor data from vehicle response to avoid duplicate API calls
@@ -480,7 +480,7 @@ export default function Vehicles() {
             // Extract location from vehicle response
             if (firstVehicle.parking_locations) {
               const location = {
-                id: firstVehicle.parking_locations.id || firstVehicle.location_id,
+                id: firstVehicle.location_id,
                 locations_name: firstVehicle.parking_locations.locations_name,
                 address: firstVehicle.parking_locations.address,
                 contractor_id: firstVehicle.parking_locations.contractor_id || firstVehicle.contractor_id,
@@ -508,8 +508,8 @@ export default function Vehicles() {
                   : contractor.rates_4wheeler;
               } catch (e) {
                 console.error('Error parsing rates:', e);
-                rates2w = contractor.rates_2wheeler;
-                rates4w = contractor.rates_4wheeler;
+                rates2w = contractor.rates_2wheeler ?? null;
+                rates4w = contractor.rates_4wheeler ?? null;
               }
               
               setContractorRates({
@@ -534,11 +534,11 @@ export default function Vehicles() {
                 }
               }
 
-              if (contractorData && contractorData.id) {
-                const all = await VehicleAPI.getContractorVehicles(contractorData.id);
-                // Ensure vehicles is always an array
-                const vehiclesArray = Array.isArray(all) ? all : (all?.data && Array.isArray(all.data) ? all.data : []);
-                setVehicles(vehiclesArray);
+            if (contractorData && contractorData.id) {
+              const all = await VehicleAPI.getContractorVehicles(contractorData.id);
+              // Ensure vehicles is always an array
+              const vehiclesArray = Array.isArray(all) ? all : [];
+              setVehicles(vehiclesArray);
                 
                 // Set contractor rates for checkout calculation
                 // Parse rates if they're JSON strings
@@ -571,7 +571,7 @@ export default function Vehicles() {
                 // Load contractor's locations
                 const locationsData = await ContractorAPI.getContractorLocations(contractorData.id);
                 // Ensure locationsData is always an array
-                const locationsArray = Array.isArray(locationsData) ? locationsData : (locationsData?.data && Array.isArray(locationsData.data) ? locationsData.data : []);
+                const locationsArray = Array.isArray(locationsData) ? locationsData : [];
                 
                 // Filter active locations
                 const activeLocations = locationsArray.filter(loc => 
@@ -620,7 +620,7 @@ export default function Vehicles() {
     const byContractor: { [k: string]: { [l: string]: Vehicle[] } } = {};
     vehiclesArray.forEach(v => {
       const contractorId = v.location?.contractor_id || "unknown";
-      const locationName = v.location?.name || "Unknown Location";
+      const locationName = v.location?.locations_name || "Unknown Location";
       byContractor[contractorId] = byContractor[contractorId] || {};
       byContractor[contractorId][locationName] = byContractor[contractorId][locationName] || [];
       byContractor[contractorId][locationName].push(v);
@@ -861,9 +861,14 @@ export default function Vehicles() {
       };
       
       const updatedVehicle = await VehicleAPI.checkoutVehicle(selectedVehicle.id, checkoutData);
+      // Preserve original check_in_time if backend incorrectly updates it
+      const vehicleToUpdate = {
+        ...updatedVehicle,
+        check_in_time: selectedVehicle.check_in_time // Keep original check_in_time
+      };
       setVehicles(prev => {
         const prevArray = Array.isArray(prev) ? prev : [];
-        return prevArray.map(v => v.id === selectedVehicle.id ? updatedVehicle : v);
+        return prevArray.map(v => v.id === selectedVehicle.id ? vehicleToUpdate : v);
       });
       
       // Calculate duration
