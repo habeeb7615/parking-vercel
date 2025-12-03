@@ -148,8 +148,12 @@ const Attendants = memo(function Attendants() {
       console.log('Locations:', locs);
       
       setAttendants(attendantsResult.data);
-      setContractors(cons);
-      setLocations(locs);
+      // Ensure contractors is always an array
+      const contractorsArray = Array.isArray(cons) ? cons : (cons?.data && Array.isArray(cons.data) ? cons.data : []);
+      setContractors(contractorsArray);
+      // Ensure locations is always an array
+      const locationsArray = Array.isArray(locs) ? locs : (locs?.data && Array.isArray(locs.data) ? locs.data : []);
+      setLocations(locationsArray);
       setPagination(prev => ({
         ...prev,
         page: attendantsResult.page,
@@ -380,12 +384,14 @@ const Attendants = memo(function Attendants() {
 
   // Filter locations by selected contractor
   const filteredLocations = useMemo(() => {
+    // Ensure locations is always an array
+    const locationsArray = Array.isArray(locations) ? locations : [];
     if (isContractor && currentContractor) {
       // For contractors, only show their own locations
-      return locations.filter(loc => loc.contractor_id === currentContractor.id);
+      return locationsArray.filter(loc => loc.contractor_id === currentContractor.id);
     }
     if (!form.contractor_id) return [];
-    return locations.filter(loc => loc.contractor_id === form.contractor_id);
+    return locationsArray.filter(loc => loc.contractor_id === form.contractor_id);
   }, [form.contractor_id, locations, isContractor, currentContractor]);
 
   return (

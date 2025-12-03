@@ -80,7 +80,15 @@ export class LocationAPI {
   // Super Admin only - Get all locations
   static async getAllLocations(): Promise<Location[]> {
     const response = await apiClient.get<Location[]>('/locations');
-    return response.data || [];
+    // Handle different response structures
+    if (Array.isArray(response.data)) {
+      return response.data;
+    }
+    // If response.data is an object with a data property (nested structure)
+    if (response.data && typeof response.data === 'object' && 'data' in response.data && Array.isArray(response.data.data)) {
+      return response.data.data;
+    }
+    return [];
   }
 
   // Get location by ID
@@ -110,13 +118,29 @@ export class LocationAPI {
   // Get locations for contractor
   static async getContractorLocations(userId: string): Promise<Location[]> {
     const response = await apiClient.get<Location[]>(`/locations/contractor/${userId}`);
-    return response.data || [];
+    // Handle different response structures
+    if (Array.isArray(response.data)) {
+      return response.data;
+    }
+    // If response.data is an object with a data property (nested structure)
+    if (response.data && typeof response.data === 'object' && 'data' in response.data && Array.isArray(response.data.data)) {
+      return response.data.data;
+    }
+    return [];
   }
 
   // Get locations for attendant
   static async getAttendantLocations(attendantId: string): Promise<Location[]> {
     const response = await apiClient.get<Location[]>(`/locations/attendant/${attendantId}`);
-    return response.data || [];
+    // Handle different response structures
+    if (Array.isArray(response.data)) {
+      return response.data;
+    }
+    // If response.data is an object with a data property (nested structure)
+    if (response.data && typeof response.data === 'object' && 'data' in response.data && Array.isArray(response.data.data)) {
+      return response.data.data;
+    }
+    return [];
   }
 
 
