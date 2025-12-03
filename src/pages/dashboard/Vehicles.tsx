@@ -62,7 +62,7 @@ export default function Vehicles() {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeTab, setActiveTab] = useState("all");
+  const [activeTab, setActiveTab] = useState("parked");
   const [paginationMeta, setPaginationMeta] = useState<{
     count: number;
     curPage: number;
@@ -563,7 +563,7 @@ export default function Vehicles() {
         dataFetchedRef.current = true;
         
         if (isSuperAdmin || isAttendant || isContractor) {
-          // Use pagination API for all roles
+          // Use pagination API for all roles (default to 'parked' tab)
           await fetchVehiclesWithPagination(1, activeTab === 'all' ? undefined : activeTab);
           
           // For contractors, also load locations and rates
@@ -1138,30 +1138,10 @@ export default function Vehicles() {
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3">
-          <TabsTrigger value="all" className="text-xs sm:text-sm">All Vehicles</TabsTrigger>
           <TabsTrigger value="parked" className="text-xs sm:text-sm">Currently Parked</TabsTrigger>
           <TabsTrigger value="checked-out" className="text-xs sm:text-sm">Checked Out</TabsTrigger>
+          <TabsTrigger value="all" className="text-xs sm:text-sm">All Vehicles</TabsTrigger>
         </TabsList>
-        
-        <TabsContent value="all" className="mt-6">
-          {loading ? (
-            <div className="text-center py-8">
-              <div className="text-muted-foreground">Loading vehicles...</div>
-            </div>
-          ) : allVehicles.length === 0 ? (
-            <div className="text-center py-8">
-              <h3 className="text-lg font-medium mb-2">No vehicles found</h3>
-              <p className="text-muted-foreground">
-                {isContractor 
-                  ? "Vehicle logs will appear here when attendants check in vehicles at your assigned locations."
-                  : "Vehicle logs will appear here when vehicles check in."
-                }
-              </p>
-            </div>
-          ) : (
-            renderVehicleTable(allVehicles)
-          )}
-        </TabsContent>
         
         <TabsContent value="parked" className="mt-6">
           {loading ? (
@@ -1190,6 +1170,26 @@ export default function Vehicles() {
             </div>
           ) : (
             renderVehicleTable(checkedOutVehicles)
+          )}
+        </TabsContent>
+        
+        <TabsContent value="all" className="mt-6">
+          {loading ? (
+            <div className="text-center py-8">
+              <div className="text-muted-foreground">Loading vehicles...</div>
+            </div>
+          ) : allVehicles.length === 0 ? (
+            <div className="text-center py-8">
+              <h3 className="text-lg font-medium mb-2">No vehicles found</h3>
+              <p className="text-muted-foreground">
+                {isContractor 
+                  ? "Vehicle logs will appear here when attendants check in vehicles at your assigned locations."
+                  : "Vehicle logs will appear here when vehicles check in."
+                }
+              </p>
+            </div>
+          ) : (
+            renderVehicleTable(allVehicles)
           )}
         </TabsContent>
       </Tabs>
