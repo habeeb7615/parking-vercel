@@ -16,7 +16,6 @@ import { SuperAdminAPI, type CreateAttendantData } from "@/services/superAdminAp
 import { ContractorAPI } from "@/services/contractorApi";
 import { useAuth } from "@/contexts/AuthContext";
 import { LocationAPI } from "@/services/locationApi";
-import { VehicleAPI, type Vehicle } from "@/services/vehicleApi";
 
 const Attendants = memo(function Attendants() {
   const { profile, user } = useAuth();
@@ -33,7 +32,14 @@ const Attendants = memo(function Attendants() {
   const [contractorData, setContractorData] = useState<any>(null); // For contractor limit checking
   const [formLoading, setFormLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]); // For attendant vehicle stats
+  const [dashboardStats, setDashboardStats] = useState<{
+    totalVehicles: number;
+    totalCheckIn: number;
+    totalCheckOut: number;
+    currentlyParked: number;
+    totalRevenue: number;
+    todayRevenue: number;
+  } | null>(null);
   const [form, setForm] = useState<Partial<CreateAttendantData>>({
     user_name: "",
     email: "",
@@ -63,58 +69,26 @@ const Attendants = memo(function Attendants() {
   const { toast } = useToast();
 
   const stats = useMemo(() => {
-    // For attendants, calculate vehicle stats
+    // For attendants, use dashboard API stats
     if (isAttendant) {
-      const vehiclesArray = Array.isArray(vehicles) ? vehicles : [];
-      const totalVehicles = vehiclesArray.length;
-      const totalCheckIns = vehiclesArray.filter(v => v.check_in_time).length;
-      const totalCheckOuts = vehiclesArray.filter(v => v.check_out_time).length;
-      const currentlyParked = vehiclesArray.filter(v => !v.check_out_time).length;
-      
-      // Calculate total revenue
-      const totalRevenue = vehiclesArray.reduce((sum, v) => {
-        if (!v.payment_amount) return sum;
-        let amount: number;
-        if (typeof v.payment_amount === 'number') {
-          amount = v.payment_amount;
-        } else if (typeof v.payment_amount === 'string') {
-          const parsed = parseFloat(v.payment_amount);
-          amount = isNaN(parsed) ? 0 : parsed;
-        } else {
-          amount = 0;
-        }
-        return sum + (amount > 0 && isFinite(amount) ? amount : 0);
-      }, 0);
-      
-      // Calculate today's revenue
-      const today = new Date().toISOString().split('T')[0];
-      const todayRevenue = vehiclesArray
-        .filter(v => {
-          if (!v.check_out_time) return false;
-          const checkoutDate = new Date(v.check_out_time).toISOString().split('T')[0];
-          return checkoutDate === today;
-        })
-        .reduce((sum, v) => {
-          if (!v.payment_amount) return sum;
-          let amount: number;
-          if (typeof v.payment_amount === 'number') {
-            amount = v.payment_amount;
-          } else if (typeof v.payment_amount === 'string') {
-            const parsed = parseFloat(v.payment_amount);
-            amount = isNaN(parsed) ? 0 : parsed;
-          } else {
-            amount = 0;
-          }
-          return sum + (amount > 0 && isFinite(amount) ? amount : 0);
-        }, 0);
-      
+      if (dashboardStats) {
+        return {
+          totalVehicles: dashboardStats.totalVehicles,
+          totalCheckIns: dashboardStats.totalCheckIn,
+          totalCheckOuts: dashboardStats.totalCheckOut,
+          currentlyParked: dashboardStats.currentlyParked,
+          totalRevenue: dashboardStats.totalRevenue,
+          todayRevenue: dashboardStats.todayRevenue
+        };
+      }
+      // Fallback to zero if API data not loaded yet
       return {
-        totalVehicles,
-        totalCheckIns,
-        totalCheckOuts,
-        currentlyParked,
-        totalRevenue: Math.round(totalRevenue * 100) / 100,
-        todayRevenue: Math.round(todayRevenue * 100) / 100
+        totalVehicles: 0,
+        totalCheckIns: 0,
+        totalCheckOuts: 0,
+        currentlyParked: 0,
+        totalRevenue: 0,
+        todayRevenue: 0
       };
     }
     
@@ -125,7 +99,7 @@ const Attendants = memo(function Attendants() {
       assignedLocations: attendants.filter(a => a.location_id).length,
       averageHours: 0 // This would be calculated from actual work data
     };
-  }, [attendants, pagination.totalCount, vehicles, isAttendant]);
+  }, [attendants, pagination.totalCount, dashboardStats, isAttendant]);
 
   const fetchData = async (page = pagination.page, searchTerm = search, sort = sortBy, order = sortOrder) => {
     try {
@@ -182,14 +156,20 @@ const Attendants = memo(function Attendants() {
           totalPages: 1
         };
         
-        // Fetch vehicles for attendant stats
+        // Fetch dashboard stats for attendant
         try {
-          const allVehicles = await VehicleAPI.getAttendantVehicles(user.id);
-          const vehiclesArray = Array.isArray(allVehicles) ? allVehicles : [];
-          setVehicles(vehiclesArray);
+          const dashboardData = await AttendantAPI.getAttendantDashboard();
+          setDashboardStats({
+            totalVehicles: dashboardData.totalVehicles,
+            totalCheckIn: dashboardData.totalCheckIn,
+            totalCheckOut: dashboardData.totalCheckOut,
+            currentlyParked: dashboardData.currentlyParked,
+            totalRevenue: dashboardData.totalRevenue,
+            todayRevenue: dashboardData.todayRevenue
+          });
         } catch (error) {
-          console.error('Error fetching vehicles for attendant:', error);
-          setVehicles([]);
+          console.error('Error fetching dashboard stats for attendant:', error);
+          setDashboardStats(null);
         }
       } else {
         // For super admins, show all attendants

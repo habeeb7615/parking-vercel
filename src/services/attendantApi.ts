@@ -197,6 +197,28 @@ export class AttendantAPI {
     return response.data;
   }
 
+  // Get attendant dashboard stats
+  static async getAttendantDashboard(): Promise<{
+    statusCode: number;
+    totalVehicles: number;
+    totalCheckIn: number;
+    totalCheckOut: number;
+    currentlyParked: number;
+    totalRevenue: number;
+    todayRevenue: number;
+  }> {
+    const response = await apiClient.get<{
+      statusCode: number;
+      totalVehicles: number;
+      totalCheckIn: number;
+      totalCheckOut: number;
+      currentlyParked: number;
+      totalRevenue: number;
+      todayRevenue: number;
+    }>('/attendant-dashboard');
+    return response.data;
+  }
+
   // Get attendant by ID
   static async getAttendantById(id: string): Promise<Attendant> {
     const response = await apiClient.get<Attendant>(`/attendants/${id}`);
