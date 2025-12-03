@@ -21,6 +21,17 @@ export default function Login() {
   const [searchParams] = useSearchParams();
   const role = searchParams.get("role") || "";
 
+  // Load remembered email on component mount
+  useEffect(() => {
+    const rememberedEmail = localStorage.getItem("remembered_email");
+    const rememberMeStatus = localStorage.getItem("remember_me") === "true";
+    
+    if (rememberedEmail && rememberMeStatus) {
+      setEmail(rememberedEmail);
+      setRememberMe(true);
+    }
+  }, []);
+
   useEffect(() => {
     // Wait for auth to finish loading before checking authentication status
     if (authLoading) {
@@ -58,6 +69,11 @@ export default function Login() {
     // Clear form
     setEmail("");
     setPassword("");
+    // Clear remembered email if not checked
+    if (!rememberMe) {
+      localStorage.removeItem("remembered_email");
+      localStorage.removeItem("remember_me");
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -72,6 +88,16 @@ export default function Login() {
 
       if (result && !result.error) {
         console.log('Login: Sign in successful');
+        
+        // Handle remember me functionality
+        if (rememberMe) {
+          localStorage.setItem("remembered_email", email);
+          localStorage.setItem("remember_me", "true");
+        } else {
+          localStorage.removeItem("remembered_email");
+          localStorage.removeItem("remember_me");
+        }
+        
         // For attendant role, we need to manually navigate since useEffect blocks it
         if (role === 'attendant') {
           console.log('Login: Manually navigating to dashboard for attendant');
@@ -215,19 +241,19 @@ export default function Login() {
 											required
 											className="h-10 sm:h-12 bg-white/10 border-white/20 text-white placeholder:text-white/60 focus:border-purple-400 focus:ring-purple-400 backdrop-blur-sm pr-12"
 										/>
-										<Button
-											type="button"
-											variant="ghost"
-											size="icon"
-											className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 text-white/60 hover:text-white hover:bg-white/10"
-											onClick={() => setShowPassword(!showPassword)}
-										>
-											{showPassword ? (
-												<EyeOff className="h-4 w-4" />
-											) : (
-												<Eye className="h-4 w-4" />
-											)}
-										</Button>
+									<Button
+										type="button"
+										variant="ghost"
+										size="icon"
+										className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 text-gray-600 hover:text-gray-800 hover:bg-white/20"
+										onClick={() => setShowPassword(!showPassword)}
+									>
+										{showPassword ? (
+											<EyeOff className="h-4 w-4" />
+										) : (
+											<Eye className="h-4 w-4" />
+										)}
+									</Button>
 									</div>
 								</div>
 
@@ -236,7 +262,14 @@ export default function Login() {
 									<Checkbox
 										id="remember"
 										checked={rememberMe}
-										onCheckedChange={(checked) => setRememberMe(checked as boolean)}
+										onCheckedChange={(checked) => {
+											setRememberMe(checked as boolean);
+											// Clear saved email if unchecked
+											if (!checked) {
+												localStorage.removeItem("remembered_email");
+												localStorage.removeItem("remember_me");
+											}
+										}}
 										className="border-white/30 data-[state=checked]:bg-purple-500 data-[state=checked]:border-purple-500"
 									/>
 									<Label htmlFor="remember" className="text-xs sm:text-sm text-white/80">
