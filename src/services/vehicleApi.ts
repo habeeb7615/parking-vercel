@@ -129,7 +129,15 @@ export class VehicleAPI {
     }
 
     const response = await apiClient.get<Vehicle[]>(`/vehicles/attendant/${userId}`);
-    return response.data || [];
+    // Handle different response structures
+    if (Array.isArray(response.data)) {
+      return response.data;
+    }
+    // If response.data is an object with a data property (nested structure)
+    if (response.data && typeof response.data === 'object' && 'data' in response.data && Array.isArray(response.data.data)) {
+      return response.data.data;
+    }
+    return [];
   }
 
   // Get vehicles by location

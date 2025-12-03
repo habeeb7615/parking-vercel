@@ -32,6 +32,7 @@ export default function Vehicles() {
   
   // Track if data has been fetched to prevent unnecessary re-fetches
   const dataFetchedRef = useRef(false);
+  const subscriptionCheckedRef = useRef(false);
   
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [subscriptionBlocked, setSubscriptionBlocked] = useState(false);
@@ -408,28 +409,51 @@ export default function Vehicles() {
     resetPagination();
   }, [searchQuery]);
 
-  // Check subscription status for attendants (non-blocking)
+  // Check subscription status for attendants (non-blocking) - only once when vehicles are loaded
   useEffect(() => {
-    if (profile?.role === 'attendant' && profile?.id) {
-      // Run subscription check in background without blocking page load
-      checkAttendantContractorSubscription(profile.id)
-        .then((status) => {
-          console.log('Subscription status for attendant (Vehicles):', status);
-          if (status.isExpired || status.isSuspended) {
-            setSubscriptionBlocked(true);
-            toast({
-              variant: "destructive",
-              title: "Access Blocked",
-              description: "Your contractor's subscription has expired. Please contact your contractor to recharge.",
-            });
-          }
-        })
-        .catch((error) => {
-          console.error('Error checking subscription status (Vehicles):', error);
-          // Don't block access if there's an error checking subscription
-        });
+    // Only check subscription once when we have vehicles data, not on every profile/toast change
+    if (profile?.role === 'attendant' && profile?.id && vehicles.length > 0 && !subscriptionCheckedRef.current) {
+      subscriptionCheckedRef.current = true;
+      
+      // Try to get subscription info from vehicle response first (to avoid duplicate API calls)
+      const firstVehicle = vehicles[0];
+      if (firstVehicle?.contractors?.profiles) {
+        // Use data from vehicle response
+        const contractorProfile = firstVehicle.contractors.profiles;
+        const now = new Date();
+        const endDate = contractorProfile.subscription_end_date ? new Date(contractorProfile.subscription_end_date) : null;
+        const isExpired = endDate && endDate < now;
+        const isSuspended = contractorProfile.subscription_status === 'expired' || contractorProfile.subscription_status === 'suspended';
+        
+        if (isExpired || isSuspended) {
+          setSubscriptionBlocked(true);
+          toast({
+            variant: "destructive",
+            title: "Access Blocked",
+            description: "Your contractor's subscription has expired. Please contact your contractor to recharge.",
+          });
+        }
+      } else {
+        // Fallback to API call only if vehicle data doesn't have subscription info
+        checkAttendantContractorSubscription(profile.id)
+          .then((status) => {
+            console.log('Subscription status for attendant (Vehicles):', status);
+            if (status.isExpired || status.isSuspended) {
+              setSubscriptionBlocked(true);
+              toast({
+                variant: "destructive",
+                title: "Access Blocked",
+                description: "Your contractor's subscription has expired. Please contact your contractor to recharge.",
+              });
+            }
+          })
+          .catch((error) => {
+            console.error('Error checking subscription status (Vehicles):', error);
+            // Don't block access if there's an error checking subscription
+          });
+      }
     }
-  }, [profile, toast]);
+  }, [profile?.role, profile?.id, vehicles.length, toast]);
 
   useEffect(() => {
     // Prevent duplicate calls if already fetched
@@ -445,60 +469,53 @@ export default function Vehicles() {
         } else if (isAttendant) {
           // For attendants, load their vehicles
           const all = await VehicleAPI.getAttendantVehicles();
-          setVehicles(all);
+          // Ensure vehicles is always an array
+          const vehiclesArray = Array.isArray(all) ? all : (all?.data && Array.isArray(all.data) ? all.data : []);
+          setVehicles(vehiclesArray);
           
-          // Load attendant's location
-          if (profile?.id) {
-            try {
-              const attendant = await AttendantAPI.getAttendantByUserId(profile.id);
-              
-              if (attendant && attendant.location_id) {
-                // Get location details
-                const location = await LocationAPI.getLocationById(attendant.location_id);
-                
-                if (location) {
-                  setLocations([location]);
-                  setNewVehicle(prev => ({
-                    ...prev,
-                    location_id: attendant.location_id || '',
-                    contractor_id: location.contractor_id
-                  }));
-
-                  // Fetch contractor rates for checkout calculation
-                  const contractor = await ContractorAPI.getContractorById(location.contractor_id);
-                  
-                  if (contractor) {
-                    // Parse rates if they're JSON strings
-                    let rates2w, rates4w;
-                    try {
-                      rates2w = typeof contractor.rates_2wheeler === 'string' 
-                        ? JSON.parse(contractor.rates_2wheeler) 
-                        : contractor.rates_2wheeler;
-                      rates4w = typeof contractor.rates_4wheeler === 'string' 
-                        ? JSON.parse(contractor.rates_4wheeler) 
-                        : contractor.rates_4wheeler;
-                    } catch (e) {
-                      console.error('Error parsing rates:', e);
-                      rates2w = contractor.rates_2wheeler;
-                      rates4w = contractor.rates_4wheeler;
-                    }
-                    
-                    console.log('Vehicles: Setting contractor rates for attendant', { 
-                      rates2w, 
-                      rates4w,
-                      original2w: contractor.rates_2wheeler,
-                      original4w: contractor.rates_4wheeler
-                    });
-                    
-                    setContractorRates({
-                      rates_2wheeler: rates2w,
-                      rates_4wheeler: rates4w
-                    });
-                  }
-                }
+          // Extract location and contractor data from vehicle response to avoid duplicate API calls
+          if (vehiclesArray.length > 0) {
+            const firstVehicle = vehiclesArray[0];
+            
+            // Extract location from vehicle response
+            if (firstVehicle.parking_locations) {
+              const location = {
+                id: firstVehicle.parking_locations.id || firstVehicle.location_id,
+                locations_name: firstVehicle.parking_locations.locations_name,
+                address: firstVehicle.parking_locations.address,
+                contractor_id: firstVehicle.parking_locations.contractor_id || firstVehicle.contractor_id,
+                ...firstVehicle.parking_locations
+              };
+              setLocations([location]);
+              setNewVehicle(prev => ({
+                ...prev,
+                location_id: location.id || '',
+                contractor_id: location.contractor_id || ''
+              }));
+            }
+            
+            // Extract contractor rates from vehicle response
+            if (firstVehicle.contractors) {
+              const contractor = firstVehicle.contractors;
+              // Parse rates if they're JSON strings
+              let rates2w, rates4w;
+              try {
+                rates2w = typeof contractor.rates_2wheeler === 'string' 
+                  ? JSON.parse(contractor.rates_2wheeler) 
+                  : contractor.rates_2wheeler;
+                rates4w = typeof contractor.rates_4wheeler === 'string' 
+                  ? JSON.parse(contractor.rates_4wheeler) 
+                  : contractor.rates_4wheeler;
+              } catch (e) {
+                console.error('Error parsing rates:', e);
+                rates2w = contractor.rates_2wheeler;
+                rates4w = contractor.rates_4wheeler;
               }
-            } catch (error) {
-              console.error('Error loading attendant location:', error);
+              
+              setContractorRates({
+                rates_2wheeler: rates2w,
+                rates_4wheeler: rates4w
+              });
             }
           }
         } else if (isContractor) {
@@ -697,7 +714,9 @@ export default function Vehicles() {
       );
     };
 
-    return filterVehicles([...vehicles].sort((a, b) => {
+    // Ensure vehicles is always an array
+    const vehiclesArray = Array.isArray(vehicles) ? vehicles : [];
+    return filterVehicles([...vehiclesArray].sort((a, b) => {
       const timeA = a.check_in_time ? new Date(a.check_in_time).getTime() : 0;
       const timeB = b.check_in_time ? new Date(b.check_in_time).getTime() : 0;
       return timeB - timeA;
@@ -781,7 +800,10 @@ export default function Vehicles() {
     try {
       setLoading(true);
       const vehicle = await VehicleAPI.createVehicle(newVehicle);
-      setVehicles(prev => [vehicle, ...prev]);
+      setVehicles(prev => {
+        const prevArray = Array.isArray(prev) ? prev : [];
+        return [vehicle, ...prevArray];
+      });
       setNewVehicle({
         plate_number: '',
         vehicle_type: '4-wheeler',
@@ -839,7 +861,10 @@ export default function Vehicles() {
       };
       
       const updatedVehicle = await VehicleAPI.checkoutVehicle(selectedVehicle.id, checkoutData);
-      setVehicles(prev => prev.map(v => v.id === selectedVehicle.id ? updatedVehicle : v));
+      setVehicles(prev => {
+        const prevArray = Array.isArray(prev) ? prev : [];
+        return prevArray.map(v => v.id === selectedVehicle.id ? updatedVehicle : v);
+      });
       
       // Calculate duration
       const checkInTime = new Date(selectedVehicle.check_in_time);
