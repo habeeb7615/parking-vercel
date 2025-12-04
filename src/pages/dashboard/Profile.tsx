@@ -270,8 +270,14 @@ export default function Profile() {
                     type="email"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    disabled={!isEditing}
+                    disabled={!isEditing || profile.role === 'attendant'}
+                    className={profile.role === 'attendant' ? 'bg-gray-50 cursor-not-allowed' : ''}
                   />
+                  {profile.role === 'attendant' && (
+                    <p className="text-xs text-muted-foreground">
+                      Email address cannot be changed for attendants
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="phone_number">Phone Number</Label>
