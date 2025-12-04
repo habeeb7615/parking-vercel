@@ -140,10 +140,12 @@ export function Navbar({ onMobileMenuToggle }: NavbarProps) {
                 <User className="mr-2 h-4 w-4" />
                 <span>Profile</span>
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigate("/dashboard/settings")} className="text-xs sm:text-sm">
-                <Settings className="mr-2 h-4 w-4" />
-                <span>Settings</span>
-              </DropdownMenuItem>
+              {profile.role !== 'attendant' && (
+                <DropdownMenuItem onClick={() => navigate("/dashboard/settings")} className="text-xs sm:text-sm">
+                  <Settings className="mr-2 h-4 w-4" />
+                  <span>Settings</span>
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleSignOut} className="text-xs sm:text-sm">
                 <LogOut className="mr-2 h-4 w-4" />

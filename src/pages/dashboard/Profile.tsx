@@ -333,12 +333,6 @@ export default function Profile() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">User ID</span>
-                <span className="text-sm text-muted-foreground font-mono">
-                  {user?.id?.slice(0, 8)}...
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">Status</span>
                 <Badge className="bg-green-100 text-green-800">
                   {profile.status || "Active"}
