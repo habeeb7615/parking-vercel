@@ -14,6 +14,7 @@ export interface Vehicle {
   gate_out_id?: string;
   session_id?: string;
   payment_amount?: number;
+  calculated_amount?: number; // Calculated amount for dashboard/reports
   payment_status?: string;
   receipt_id?: string;
   created_by?: string;
@@ -82,6 +83,7 @@ export interface CreateVehicleData {
 export interface VehicleCheckoutData {
   check_out_time: string;
   payment_amount: number;
+  calculated_amount?: number; // Calculated amount for tracking (dashboard will show this)
   payment_method: 'cash' | 'card' | 'digital' | 'free';
   check_in_time?: string; // Preserve original check_in_time
 }
@@ -177,6 +179,7 @@ export class VehicleAPI {
     const response = await apiClient.post<Vehicle>(`/vehicles/checkout/${vehicleId}`, {
       check_out_time: checkoutData.check_out_time,
       payment_amount: checkoutData.payment_amount,
+      calculated_amount: checkoutData.calculated_amount, // Send calculated amount to backend
       payment_method: checkoutData.payment_method
     });
 

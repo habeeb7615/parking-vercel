@@ -109,6 +109,47 @@ export default function Vehicles() {
     return '-';
   };
 
+  const formatDiscount = (vehicle: Vehicle) => {
+    // Only show discount for vehicles that have been checked out
+    if (vehicle.check_out_time && vehicle.payment_amount != null) {
+      // Get calculated amount (if available) or use payment_amount as fallback
+      let calculatedAmount: number = 0;
+      let paymentAmount: number = 0;
+      
+      // Parse calculated_amount
+      if (vehicle.calculated_amount != null) {
+        if (typeof vehicle.calculated_amount === 'number') {
+          calculatedAmount = vehicle.calculated_amount;
+        } else {
+          const parsed = parseFloat(String(vehicle.calculated_amount));
+          calculatedAmount = isNaN(parsed) ? 0 : parsed;
+        }
+      }
+      
+      // Parse payment_amount
+      if (typeof vehicle.payment_amount === 'number') {
+        paymentAmount = vehicle.payment_amount;
+      } else {
+        const parsed = parseFloat(String(vehicle.payment_amount));
+        paymentAmount = isNaN(parsed) ? 0 : parsed;
+      }
+      
+      // Calculate discount (calculated_amount - payment_amount)
+      if (calculatedAmount > 0 && calculatedAmount > paymentAmount) {
+        const discount = calculatedAmount - paymentAmount;
+        if (discount > 0) {
+          return `₹${discount.toFixed(2)}`;
+        }
+      }
+      
+      // If no discount or calculated_amount not available, show "-"
+      return '-';
+    }
+    
+    // For parked vehicles, show "-"
+    return '-';
+  };
+
   const getStatusBadge = (vehicle: Vehicle) => {
     const status = getVehicleStatus(vehicle);
     if (status === 'checked_in') {
@@ -245,7 +286,7 @@ export default function Vehicles() {
         {/* Desktop Table */}
         <div className="hidden lg:block overflow-hidden rounded-lg border">
           <div className="bg-gray-50 px-4 sm:px-6 py-3 border-b">
-            <div className={`grid gap-2 sm:gap-4 text-xs sm:text-sm font-medium text-gray-700 ${isAttendant ? 'grid-cols-8' : 'grid-cols-9'}`} style={{ gridTemplateColumns: isAttendant ? '1fr 1fr 0.8fr 1.2fr 1.2fr 0.8fr 0.8fr 1fr' : '1fr 1fr 0.8fr 1.2fr 1.2fr 0.8fr 0.8fr 1fr 1fr' }}>
+            <div className={`grid gap-2 sm:gap-4 text-xs sm:text-sm font-medium text-gray-700 ${isAttendant ? 'grid-cols-9' : 'grid-cols-10'}`} style={{ gridTemplateColumns: isAttendant ? '1fr 1fr 0.8fr 1.2fr 1.2fr 0.8fr 0.8fr 0.8fr 1fr' : '1fr 1fr 0.8fr 1.2fr 1.2fr 0.8fr 0.8fr 0.8fr 1fr 1fr' }}>
               <div>Plate Number</div>
               <div>Mobile Number</div>
               <div>Type</div>
@@ -253,6 +294,7 @@ export default function Vehicles() {
               <div>Check-out</div>
               <div>Duration</div>
               <div>Payment</div>
+              <div>Discount</div>
               {!isAttendant && <div>Attendant Name</div>}
               {!isAttendant && <div>Location</div>}
               {isAttendant && <div>Actions</div>}
@@ -262,7 +304,7 @@ export default function Vehicles() {
           <div className="divide-y">
             {paginatedVehicles.map((vehicle) => (
               <div key={vehicle.id} className="px-4 sm:px-6 py-3 sm:py-4 hover:bg-gray-50 transition-colors">
-                <div className={`grid gap-2 sm:gap-4 items-center text-xs sm:text-sm ${isAttendant ? 'grid-cols-8' : 'grid-cols-9'}`} style={{ gridTemplateColumns: isAttendant ? '1fr 1fr 0.8fr 1.2fr 1.2fr 0.8fr 0.8fr 1fr' : '1fr 1fr 0.8fr 1.2fr 1.2fr 0.8fr 0.8fr 1fr 1fr' }}>
+                <div className={`grid gap-2 sm:gap-4 items-center text-xs sm:text-sm ${isAttendant ? 'grid-cols-9' : 'grid-cols-10'}`} style={{ gridTemplateColumns: isAttendant ? '1fr 1fr 0.8fr 1.2fr 1.2fr 0.8fr 0.8fr 0.8fr 1fr' : '1fr 1fr 0.8fr 1.2fr 1.2fr 0.8fr 0.8fr 0.8fr 1fr 1fr' }}>
                   <div className="font-medium text-gray-900">
                     {vehicle.plate_number}
                   </div>
@@ -289,6 +331,10 @@ export default function Vehicles() {
                   
                   <div className="text-gray-600">
                     {formatPayment(vehicle)}
+                  </div>
+                  
+                  <div className="text-gray-600">
+                    {formatDiscount(vehicle)}
                   </div>
                   
                   {!isAttendant && (
@@ -383,6 +429,10 @@ export default function Vehicles() {
                   <div className="flex items-center space-x-1">
                     <span className="text-muted-foreground">Payment:</span>
                     <span>{formatPayment(vehicle)}</span>
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <span className="text-muted-foreground">Discount:</span>
+                    <span>{formatDiscount(vehicle)}</span>
                   </div>
                   {!isAttendant && (
                     <div className="flex items-center space-x-1">
@@ -915,7 +965,7 @@ export default function Vehicles() {
     setShowCheckout(true);
   };
 
-  const handleCheckoutConfirm = async (data: { payment_amount: number; payment_method: string }) => {
+  const handleCheckoutConfirm = async (data: { payment_amount: number; calculated_amount?: number; payment_method: string }) => {
     console.log('Vehicles: handleCheckoutConfirm called', { selectedVehicle, data });
     if (!selectedVehicle) {
       console.error('Vehicles: selectedVehicle is null');
@@ -933,12 +983,14 @@ export default function Vehicles() {
       const checkoutData = {
         check_out_time: now.toISOString(), // Already in UTC format (ISO 8601 with Z suffix)
         payment_amount: data.payment_amount,
+        calculated_amount: data.calculated_amount, // Send calculated amount for tracking
         payment_method: data.payment_method as 'cash' | 'card' | 'digital' | 'free'
       };
       
       console.log('Vehicles: Checkout data being sent:', {
         check_out_time: checkoutData.check_out_time,
         payment_amount: checkoutData.payment_amount,
+        calculated_amount: checkoutData.calculated_amount,
         original_check_in_time: originalCheckInTime,
         original_check_in_time_parsed: new Date(originalCheckInTime).toISOString()
       });
