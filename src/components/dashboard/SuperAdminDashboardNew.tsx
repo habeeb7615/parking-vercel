@@ -60,6 +60,8 @@ const SuperAdminDashboard = memo(function SuperAdminDashboard() {
   const [isCreatingContractor, setIsCreatingContractor] = useState(false);
   const [isCreatingLocation, setIsCreatingLocation] = useState(false);
   const [isCreatingAttendant, setIsCreatingAttendant] = useState(false);
+  const [contractorPhoneError, setContractorPhoneError] = useState<string>('');
+  const [attendantPhoneError, setAttendantPhoneError] = useState<string>('');
   
   // Form states
   const [contractorForm, setContractorForm] = useState<CreateContractorData>({
@@ -158,6 +160,22 @@ const SuperAdminDashboard = memo(function SuperAdminDashboard() {
     }
   };
 
+  const validateMobileNumber = (value: string): string => {
+    if (!value || value.trim() === '') {
+      return ''; // Empty is allowed for optional field
+    }
+    // Only allow exactly 10 digits
+    const digitsOnly = value.replace(/\D/g, '');
+    
+    if (digitsOnly.length !== 10) {
+      return 'Mobile number must be exactly 10 digits (e.g., 9876543210)';
+    }
+    if (!/^\d{10}$/.test(digitsOnly)) {
+      return 'Mobile number must contain only digits (e.g., 9876543210)';
+    }
+    return '';
+  };
+
   // Form handlers
   const handleCreateContractor = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -173,6 +191,19 @@ const SuperAdminDashboard = memo(function SuperAdminDashboard() {
         });
         return;
       }
+
+      // Validate phone number if provided
+      const phoneError = validateMobileNumber(contractorForm.phone_number);
+      if (phoneError) {
+        setContractorPhoneError(phoneError);
+        toast({
+          variant: "destructive",
+          title: "Validation Error",
+          description: phoneError
+        });
+        return;
+      }
+      setContractorPhoneError('');
 
       const result = await SuperAdminAPI.createContractor(contractorForm);
       
@@ -204,6 +235,7 @@ const SuperAdminDashboard = memo(function SuperAdminDashboard() {
           upTo24Hours: 200
         }
       });
+      setContractorPhoneError('');
       setShowCreateContractor(false);
       fetchDashboardData();
       // Ensure we remain on Super Admin dashboard after creation
@@ -280,6 +312,19 @@ const SuperAdminDashboard = memo(function SuperAdminDashboard() {
         return;
       }
 
+      // Validate phone number if provided
+      const phoneError = validateMobileNumber(attendantForm.phone_number || '');
+      if (phoneError) {
+        setAttendantPhoneError(phoneError);
+        toast({
+          variant: "destructive",
+          title: "Validation Error",
+          description: phoneError
+        });
+        return;
+      }
+      setAttendantPhoneError('');
+
       const result = await SuperAdminAPI.createAttendant(attendantForm);
       
       toast({
@@ -294,6 +339,7 @@ const SuperAdminDashboard = memo(function SuperAdminDashboard() {
         phone_number: '',
         location_id: ''
       });
+      setAttendantPhoneError('');
       setShowCreateAttendant(false);
       fetchDashboardData();
     } catch (error: any) {
@@ -588,9 +634,22 @@ const SuperAdminDashboard = memo(function SuperAdminDashboard() {
                         <Input
                           id="phone_number"
                           value={contractorForm.phone_number}
-                          onChange={(e) => setContractorForm({...contractorForm, phone_number: e.target.value})}
+                          onChange={(e) => {
+                            // Only allow digits, limit to 10 digits
+                            const value = e.target.value.replace(/\D/g, '').slice(0, 10);
+                            setContractorForm({...contractorForm, phone_number: value});
+                            const error = validateMobileNumber(value);
+                            setContractorPhoneError(error);
+                          }}
                           required
+                          type="tel"
+                          maxLength={10}
+                          placeholder="e.g., 9876543210"
+                          className={contractorPhoneError ? 'border-red-500' : ''}
                         />
+                        {contractorPhoneError && (
+                          <p className="text-sm text-red-500 mt-1">{contractorPhoneError}</p>
+                        )}
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
@@ -1009,8 +1068,21 @@ const SuperAdminDashboard = memo(function SuperAdminDashboard() {
                         <Input
                           id="phone_number"
                           value={attendantForm.phone_number}
-                          onChange={(e) => setAttendantForm({...attendantForm, phone_number: e.target.value})}
+                          onChange={(e) => {
+                            // Only allow digits, limit to 10 digits
+                            const value = e.target.value.replace(/\D/g, '').slice(0, 10);
+                            setAttendantForm({...attendantForm, phone_number: value});
+                            const error = validateMobileNumber(value);
+                            setAttendantPhoneError(error);
+                          }}
+                          type="tel"
+                          maxLength={10}
+                          placeholder="e.g., 9876543210"
+                          className={attendantPhoneError ? 'border-red-500' : ''}
                         />
+                        {attendantPhoneError && (
+                          <p className="text-sm text-red-500 mt-1">{attendantPhoneError}</p>
+                        )}
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4">

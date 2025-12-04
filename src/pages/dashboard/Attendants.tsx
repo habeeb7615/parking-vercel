@@ -65,6 +65,7 @@ const Attendants = memo(function Attendants() {
   
   // Track if data has been fetched to prevent unnecessary re-fetches
   const dataFetchedRef = useRef(false);
+  const [phoneNumberError, setPhoneNumberError] = useState<string>('');
   
   const { toast } = useToast();
 
@@ -304,6 +305,7 @@ const Attendants = memo(function Attendants() {
       contractor_id: initialContractorId,
       status: "active"
     });
+    setPhoneNumberError('');
     setShowForm(true);
   };
 
@@ -318,7 +320,24 @@ const Attendants = memo(function Attendants() {
         contractors.find(c => c.company_name === attendant.parking_locations?.contractors?.company_name)?.id || "" : "",
       status: (attendant.status === 'active' || attendant.status === 'inactive') ? attendant.status : 'active'
     });
+    setPhoneNumberError('');
     setShowForm(true);
+  };
+
+  const validateMobileNumber = (value: string): string => {
+    if (!value || value.trim() === '') {
+      return ''; // Empty is allowed for optional field
+    }
+    // Only allow exactly 10 digits
+    const digitsOnly = value.replace(/\D/g, '');
+    
+    if (digitsOnly.length !== 10) {
+      return 'Mobile number must be exactly 10 digits (e.g., 9876543210)';
+    }
+    if (!/^\d{10}$/.test(digitsOnly)) {
+      return 'Mobile number must contain only digits (e.g., 9876543210)';
+    }
+    return '';
   };
 
   const save = async () => {
@@ -327,6 +346,15 @@ const Attendants = memo(function Attendants() {
         toast({ variant: "destructive", title: "Validation", description: "Please fill all required fields" });
         return;
       }
+
+      // Validate phone number if provided
+      const phoneError = validateMobileNumber(form.phone_number || '');
+      if (phoneError) {
+        setPhoneNumberError(phoneError);
+        toast({ variant: "destructive", title: "Validation", description: phoneError });
+        return;
+      }
+      setPhoneNumberError('');
       
       // For contractors, ensure contractor_id is set from localStorage
       if (isContractor && user && !form.contractor_id) {
@@ -827,9 +855,21 @@ const Attendants = memo(function Attendants() {
               <Input 
                 id="phone_number" 
                 value={form.phone_number || ""} 
-                onChange={e => setForm({ ...form, phone_number: e.target.value })} 
-                placeholder="Enter phone number"
+                onChange={e => {
+                  // Only allow digits, limit to 10 digits
+                  const value = e.target.value.replace(/\D/g, '').slice(0, 10);
+                  setForm({ ...form, phone_number: value });
+                  const error = validateMobileNumber(value);
+                  setPhoneNumberError(error);
+                }} 
+                placeholder="e.g., 9876543210"
+                type="tel"
+                maxLength={10}
+                className={phoneNumberError ? 'border-red-500' : ''}
               />
+              {phoneNumberError && (
+                <p className="text-sm text-red-500 mt-1">{phoneNumberError}</p>
+              )}
             </div>
             {!editing && (
               <div className="space-y-2">

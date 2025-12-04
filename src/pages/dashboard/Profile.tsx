@@ -17,6 +17,7 @@ export default function Profile() {
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [phoneNumberError, setPhoneNumberError] = useState<string>('');
   const [formData, setFormData] = useState({
     user_name: "",
     email: "",
@@ -37,6 +38,22 @@ export default function Profile() {
     }
   }, [profile]);
 
+  const validateMobileNumber = (value: string): string => {
+    if (!value || value.trim() === '') {
+      return ''; // Empty is allowed for optional field
+    }
+    // Only allow exactly 10 digits
+    const digitsOnly = value.replace(/\D/g, '');
+    
+    if (digitsOnly.length !== 10) {
+      return 'Mobile number must be exactly 10 digits (e.g., 9876543210)';
+    }
+    if (!/^\d{10}$/.test(digitsOnly)) {
+      return 'Mobile number must contain only digits (e.g., 9876543210)';
+    }
+    return '';
+  };
+
   const handleSave = async () => {
     try {
       setLoading(true);
@@ -52,6 +69,14 @@ export default function Profile() {
       if (!formData.email.trim()) {
         throw new Error("Email is required");
       }
+
+      // Validate phone number if provided
+      const phoneError = validateMobileNumber(formData.phone_number);
+      if (phoneError) {
+        setPhoneNumberError(phoneError);
+        throw new Error(phoneError);
+      }
+      setPhoneNumberError('');
 
       // Prepare update data
       const updateData: any = {
@@ -95,6 +120,7 @@ export default function Profile() {
       contractor_name: profile?.contractor_name || "",
       attendant_name: profile?.attendant_name || "",
     });
+    setPhoneNumberError('');
     setIsEditing(false);
   };
 
@@ -252,9 +278,22 @@ export default function Profile() {
                   <Input
                     id="phone_number"
                     value={formData.phone_number}
-                    onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
+                    onChange={(e) => {
+                      // Only allow digits, limit to 10 digits
+                      const value = e.target.value.replace(/\D/g, '').slice(0, 10);
+                      setFormData({ ...formData, phone_number: value });
+                      const error = validateMobileNumber(value);
+                      setPhoneNumberError(error);
+                    }}
                     disabled={!isEditing}
+                    type="tel"
+                    maxLength={10}
+                    placeholder="e.g., 9876543210"
+                    className={phoneNumberError ? 'border-red-500' : ''}
                   />
+                  {phoneNumberError && (
+                    <p className="text-sm text-red-500 mt-1">{phoneNumberError}</p>
+                  )}
                 </div>
                 {profile.role === "contractor" && (
                   <div className="space-y-2">

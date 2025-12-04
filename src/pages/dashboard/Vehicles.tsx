@@ -68,6 +68,7 @@ export default function Vehicles() {
     perPage: number;
     totalPages: number;
   } | null>(null);
+  const [mobileNumberError, setMobileNumberError] = useState<string>('');
   const isSuperAdmin = profile?.role === "super_admin";
   const isAttendant = profile?.role === "attendant";
   const isContractor = profile?.role === "contractor";
@@ -825,11 +826,35 @@ export default function Vehicles() {
     setCurrentPage(1);
   };
 
+  const validateMobileNumber = (value: string): string => {
+    if (!value || value.trim() === '') {
+      return ''; // Empty is allowed for optional field
+    }
+    // Only allow exactly 10 digits
+    const digitsOnly = value.replace(/\D/g, '');
+    
+    if (digitsOnly.length !== 10) {
+      return 'Mobile number must be exactly 10 digits (e.g., 9876543210)';
+    }
+    if (!/^\d{10}$/.test(digitsOnly)) {
+      return 'Mobile number must contain only digits (e.g., 9876543210)';
+    }
+    return '';
+  };
+
   const handleAddVehicle = async () => {
     if (!newVehicle.plate_number || !newVehicle.vehicle_type) {
       alert('Please fill in all required fields');
       return;
     }
+
+    // Validate mobile number if provided
+    const mobileError = validateMobileNumber(newVehicle.mobile_number || '');
+    if (mobileError) {
+      setMobileNumberError(mobileError);
+      return;
+    }
+    setMobileNumberError('');
 
     // Show confirmation dialog first
     setShowConfirmCheckin(true);
@@ -846,6 +871,7 @@ export default function Vehicles() {
         contractor_id: locations[0]?.contractor_id || '',
         mobile_number: ''
       });
+      setMobileNumberError('');
       setShowAddVehicle(false);
       setShowConfirmCheckin(false);
       // Refetch vehicles after adding
@@ -1244,16 +1270,25 @@ export default function Vehicles() {
                   onChange={(e) => {
                     const input = e.target;
                     const cursorPosition = input.selectionStart;
-                    const newValue = e.target.value.toUpperCase();
+                    // Only allow digits, limit to 10 digits
+                    const newValue = e.target.value.replace(/\D/g, '').slice(0, 10);
                     setNewVehicle(prev => ({ ...prev, mobile_number: newValue }));
+                    // Validate and set error
+                    const error = validateMobileNumber(newValue);
+                    setMobileNumberError(error);
                     // Restore cursor position after state update
                     setTimeout(() => {
                       input.setSelectionRange(cursorPosition, cursorPosition);
                     }, 0);
                   }}
-                  placeholder="e.g., +91 9876543210"
+                  placeholder="e.g., 9876543210"
                   type="tel"
+                  maxLength={10}
+                  className={mobileNumberError ? 'border-red-500' : ''}
                 />
+                {mobileNumberError && (
+                  <p className="text-sm text-red-500 mt-1">{mobileNumberError}</p>
+                )}
               </div>
 
               {/* Location Display */}

@@ -75,7 +75,8 @@ export default function CheckInOut() {
   // Image check-in dialog
   const [showImageCheckIn, setShowImageCheckIn] = useState(false);
   const [locations, setLocations] = useState<Location[]>([]);
-  
+  const [mobileNumberError, setMobileNumberError] = useState<string>('');
+
   // Track if data has been fetched to prevent unnecessary refreshes
   const dataFetchedRef = useRef(false);
 
@@ -195,6 +196,22 @@ export default function CheckInOut() {
     }
   }, [user]);
 
+  const validateMobileNumber = (value: string): string => {
+    if (!value || value.trim() === '') {
+      return ''; // Empty is allowed for optional field
+    }
+    // Only allow exactly 10 digits
+    const digitsOnly = value.replace(/\D/g, '');
+    
+    if (digitsOnly.length !== 10) {
+      return 'Mobile number must be exactly 10 digits (e.g., 9876543210)';
+    }
+    if (!/^\d{10}$/.test(digitsOnly)) {
+      return 'Mobile number must contain only digits (e.g., 9876543210)';
+    }
+    return '';
+  };
+
   const handleAddVehicle = async () => {
     // Set processing immediately to show loader
     setProcessing(true);
@@ -210,6 +227,20 @@ export default function CheckInOut() {
         setProcessing(false);
         return;
       }
+
+      // Validate mobile number if provided
+      const mobileError = validateMobileNumber(newVehicle.mobile_number || '');
+      if (mobileError) {
+        setMobileNumberError(mobileError);
+        toast({
+          variant: "destructive",
+          title: "Validation Error",
+          description: mobileError,
+        });
+        setProcessing(false);
+        return;
+      }
+      setMobileNumberError('');
 
       // Ensure location_id is set
       if (!newVehicle.location_id && currentLocation?.id) {
@@ -241,6 +272,7 @@ export default function CheckInOut() {
         contractor_id: currentLocation?.contractor_id || '',
         mobile_number: ''
       });
+      setMobileNumberError('');
       
       // Refresh occupancy count
       dataFetchedRef.current = false;
@@ -471,20 +503,29 @@ export default function CheckInOut() {
             <div className="space-y-2">
               <Label className="text-base font-semibold mb-2 block">Mobile Number (Optional)</Label>
               <Input
-                placeholder="e.g., +91 9876543210"
+                placeholder="e.g., 9876543210"
                 value={newVehicle.mobile_number || ''}
                 onChange={(e) => {
                   const input = e.target;
                   const cursorPosition = input.selectionStart;
-                  const newValue = e.target.value.toUpperCase();
+                  // Only allow digits, limit to 10 digits
+                  const newValue = e.target.value.replace(/\D/g, '').slice(0, 10);
                   setNewVehicle(prev => ({ ...prev, mobile_number: newValue }));
+                  // Validate and set error
+                  const error = validateMobileNumber(newValue);
+                  setMobileNumberError(error);
                   // Restore cursor position after state update
                   setTimeout(() => {
                     input.setSelectionRange(cursorPosition, cursorPosition);
                   }, 0);
                 }}
                 type="tel"
+                maxLength={10}
+                className={mobileNumberError ? 'border-red-500' : ''}
               />
+              {mobileNumberError && (
+                <p className="text-sm text-red-500 mt-1">{mobileNumberError}</p>
+              )}
             </div>
 
             {/* Location Display */}

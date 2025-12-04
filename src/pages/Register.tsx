@@ -22,12 +22,33 @@ export default function Register() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [phoneNumberError, setPhoneNumberError] = useState<string>('');
   
   const { signUp } = useAuth();
   const navigate = useNavigate();
 
+  const validateMobileNumber = (value: string): string => {
+    if (!value || value.trim() === '') {
+      return ''; // Empty is allowed for optional field
+    }
+    // Only allow exactly 10 digits
+    const digitsOnly = value.replace(/\D/g, '');
+    
+    if (digitsOnly.length !== 10) {
+      return 'Mobile number must be exactly 10 digits (e.g., 9876543210)';
+    }
+    if (!/^\d{10}$/.test(digitsOnly)) {
+      return 'Mobile number must contain only digits (e.g., 9876543210)';
+    }
+    return '';
+  };
+
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+    if (field === 'phone_number') {
+      const error = validateMobileNumber(value);
+      setPhoneNumberError(error);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -42,6 +63,15 @@ export default function Register() {
       alert("Please select a role!");
       return;
     }
+
+    // Validate phone number if provided
+    const phoneError = validateMobileNumber(formData.phone_number);
+    if (phoneError) {
+      setPhoneNumberError(phoneError);
+      alert(phoneError);
+      return;
+    }
+    setPhoneNumberError('');
 
     setLoading(true);
 
@@ -185,11 +215,19 @@ export default function Register() {
                 <Input
                   id="phone_number"
                   type="tel"
-                  placeholder="Enter your phone number"
+                  placeholder="e.g., 9876543210"
                   value={formData.phone_number}
-                  onChange={(e) => handleInputChange("phone_number", e.target.value)}
-                  className="bg-white/10 border-white/20 text-white placeholder:text-white/60 focus:border-purple-400 focus:ring-purple-400 backdrop-blur-sm"
+                  onChange={(e) => {
+                    // Only allow digits, limit to 10 digits
+                    const value = e.target.value.replace(/\D/g, '').slice(0, 10);
+                    handleInputChange("phone_number", value);
+                  }}
+                  maxLength={10}
+                  className={`bg-white/10 border-white/20 text-white placeholder:text-white/60 focus:border-purple-400 focus:ring-purple-400 backdrop-blur-sm ${phoneNumberError ? 'border-red-500' : ''}`}
                 />
+                {phoneNumberError && (
+                  <p className="text-sm text-red-300 mt-1">{phoneNumberError}</p>
+                )}
               </div>
 
               {/* Password */}

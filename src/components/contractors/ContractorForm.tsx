@@ -29,9 +29,31 @@ const contractorSchema = z.object({
   email: z.string().email('Invalid email address'),
   password: z.string().optional(),
   confirm_password: z.string().optional(),
-  phone_number: z.string().min(10, 'Phone number must be at least 10 digits'),
+  phone_number: z.string()
+    .min(1, 'Phone number is required')
+    .refine((val) => {
+      if (!val || val.trim() === '') return false;
+      const digitsOnly = val.replace(/\D/g, '');
+      return digitsOnly.length === 10;
+    }, 'Mobile number must be exactly 10 digits (e.g., 9876543210)')
+    .refine((val) => {
+      if (!val || val.trim() === '') return false;
+      const digitsOnly = val.replace(/\D/g, '');
+      return /^\d{10}$/.test(digitsOnly);
+    }, 'Mobile number must contain only digits (e.g., 9876543210)'),
   company_name: z.string().min(2, 'Company name must be at least 2 characters'),
-  contact_number: z.string().min(10, 'Contact number must be at least 10 digits'),
+  contact_number: z.string()
+    .min(1, 'Contact number is required')
+    .refine((val) => {
+      if (!val || val.trim() === '') return false;
+      const digitsOnly = val.replace(/\D/g, '');
+      return digitsOnly.length === 10;
+    }, 'Contact number must be exactly 10 digits (e.g., 9876543210)')
+    .refine((val) => {
+      if (!val || val.trim() === '') return false;
+      const digitsOnly = val.replace(/\D/g, '');
+      return /^\d{10}$/.test(digitsOnly);
+    }, 'Contact number must contain only digits (e.g., 9876543210)'),
   allowed_locations: z.number().min(1, 'Must allow at least 1 location'),
   allowed_attendants_per_location: z.number().min(1, 'Must allow at least 1 attendant per location'),
   status: z.enum(['active', 'inactive']),
@@ -341,7 +363,14 @@ export function ContractorForm({
                 <Input
                   id="phone_number"
                   {...register('phone_number')}
-                  placeholder="Enter phone number"
+                  onChange={(e) => {
+                    // Only allow digits, limit to 10 digits
+                    const value = e.target.value.replace(/\D/g, '').slice(0, 10);
+                    setValue('phone_number', value, { shouldValidate: true });
+                  }}
+                  placeholder="e.g., 9876543210"
+                  type="tel"
+                  maxLength={10}
                 />
                 {errors.phone_number && (
                   <p className="text-sm text-destructive">{errors.phone_number.message}</p>
@@ -365,7 +394,14 @@ export function ContractorForm({
                 <Input
                   id="contact_number"
                   {...register('contact_number')}
-                  placeholder="Enter contact number"
+                  onChange={(e) => {
+                    // Only allow digits, limit to 10 digits
+                    const value = e.target.value.replace(/\D/g, '').slice(0, 10);
+                    setValue('contact_number', value, { shouldValidate: true });
+                  }}
+                  placeholder="e.g., 9876543210"
+                  type="tel"
+                  maxLength={10}
                 />
                 {errors.contact_number && (
                   <p className="text-sm text-destructive">{errors.contact_number.message}</p>
