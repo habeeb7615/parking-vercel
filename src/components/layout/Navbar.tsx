@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
-import { Bell, LogOut, Settings, User, Car, Menu } from "lucide-react";
+import { LogOut, Settings, User, Car, Menu } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 interface NavbarProps {
@@ -21,10 +21,6 @@ interface NavbarProps {
 export function Navbar({ onMobileMenuToggle }: NavbarProps) {
   const { profile, signOut } = useAuth();
   const navigate = useNavigate();
-  const [notifications] = useState([
-    { id: 1, message: "New vehicle checked in at Location A", time: "2 min ago" },
-    { id: 2, message: "Payment received for KA01AB1234", time: "5 min ago" },
-  ]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -88,30 +84,6 @@ export function Navbar({ onMobileMenuToggle }: NavbarProps) {
           >
             <Menu className="h-4 w-4 sm:h-5 sm:w-5" />
           </Button>
-
-          {/* Notifications */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="relative h-8 w-8 sm:h-9 sm:w-9">
-                <Bell className="h-4 w-4 sm:h-5 sm:w-5" />
-                {notifications.length > 0 && (
-                  <span className="absolute -top-1 -right-1 h-3 w-3 bg-parkflow-red rounded-full text-xs text-white flex items-center justify-center">
-                    {notifications.length}
-                  </span>
-                )}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-72 sm:w-80">
-              <DropdownMenuLabel className="text-sm">Notifications</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {notifications.map((notification) => (
-                <DropdownMenuItem key={notification.id} className="flex flex-col items-start p-3 sm:p-4">
-                  <p className="text-xs sm:text-sm">{notification.message}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{notification.time}</p>
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
 
           {/* User Menu */}
           <DropdownMenu>
