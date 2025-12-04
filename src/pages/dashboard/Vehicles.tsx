@@ -130,38 +130,40 @@ export default function Vehicles() {
     // Use API pagination metadata if available, otherwise fallback to client-side
     const totalPages = paginationMeta?.totalPages || getTotalPages(vehicleList);
     const paginatedVehicles = vehicleList; // API already returns paginated data
+    // Use API response page number if available, otherwise use state
+    const activePage = paginationMeta?.curPage || currentPage;
     
     const getPageNumbers = () => {
       const pages = [];
       const maxVisiblePages = 5;
       
-      if (totalPages <= maxVisiblePages) {
-        for (let i = 1; i <= totalPages; i++) {
-          pages.push(i);
-        }
-      } else {
-        if (currentPage <= 3) {
-          for (let i = 1; i <= 4; i++) {
-            pages.push(i);
-          }
-          pages.push('...');
-          pages.push(totalPages);
-        } else if (currentPage >= totalPages - 2) {
-          pages.push(1);
-          pages.push('...');
-          for (let i = totalPages - 3; i <= totalPages; i++) {
+        if (totalPages <= maxVisiblePages) {
+          for (let i = 1; i <= totalPages; i++) {
             pages.push(i);
           }
         } else {
-          pages.push(1);
-          pages.push('...');
-          for (let i = currentPage - 1; i <= currentPage + 1; i++) {
-            pages.push(i);
+          if (activePage <= 3) {
+            for (let i = 1; i <= 4; i++) {
+              pages.push(i);
+            }
+            pages.push('...');
+            pages.push(totalPages);
+          } else if (activePage >= totalPages - 2) {
+            pages.push(1);
+            pages.push('...');
+            for (let i = totalPages - 3; i <= totalPages; i++) {
+              pages.push(i);
+            }
+          } else {
+            pages.push(1);
+            pages.push('...');
+            for (let i = activePage - 1; i <= activePage + 1; i++) {
+              pages.push(i);
+            }
+            pages.push('...');
+            pages.push(totalPages);
           }
-          pages.push('...');
-          pages.push(totalPages);
         }
-      }
       
       return pages;
     };
@@ -170,7 +172,7 @@ export default function Vehicles() {
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-4">
         <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-4">
           <div className="text-xs sm:text-sm text-gray-500 text-center sm:text-left">
-            Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, vehicleList.length)} of {vehicleList.length} vehicles
+            Showing {((activePage - 1) * itemsPerPage) + 1} to {Math.min(activePage * itemsPerPage, paginationMeta?.count || vehicleList.length)} of {paginationMeta?.count || vehicleList.length} vehicles
           </div>
           
           <div className="flex items-center space-x-2">
@@ -195,8 +197,8 @@ export default function Vehicles() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => handlePageChange(currentPage - 1)}
-              disabled={currentPage === 1}
+              onClick={() => handlePageChange(activePage - 1)}
+              disabled={activePage === 1}
               className="text-xs sm:text-sm"
             >
               <ChevronLeft className="h-3 w-3 sm:h-4 sm:w-4" />
@@ -207,7 +209,7 @@ export default function Vehicles() {
               {getPageNumbers().map((page, index) => (
                 <Button
                   key={index}
-                  variant={page === currentPage ? "default" : "outline"}
+                  variant={page === activePage ? "default" : "outline"}
                   size="sm"
                   onClick={() => typeof page === 'number' ? handlePageChange(page) : undefined}
                   disabled={page === '...'}
@@ -221,8 +223,8 @@ export default function Vehicles() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => handlePageChange(currentPage + 1)}
-              disabled={currentPage === totalPages}
+              onClick={() => handlePageChange(activePage + 1)}
+              disabled={activePage === totalPages}
               className="text-xs sm:text-sm"
             >
               <span className="hidden sm:inline">Next</span>
@@ -491,6 +493,8 @@ export default function Vehicles() {
         perPage: response.perPage,
         totalPages: response.totalPages
       });
+      // Sync currentPage state with API response
+      setCurrentPage(response.curPage);
       
       // Extract location and contractor data from vehicle response (for attendants)
       if (isAttendant && fetchedVehicles.length > 0) {
@@ -642,14 +646,14 @@ export default function Vehicles() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
-  // Refetch when page or itemsPerPage changes
+  // Refetch when itemsPerPage changes (currentPage is handled by handlePageChange)
   useEffect(() => {
     if (dataFetchedRef.current && paginationMeta) {
       const statusFilter = activeTab === 'all' ? undefined : activeTab;
       fetchVehiclesWithPagination(currentPage, statusFilter);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, itemsPerPage]);
+  }, [itemsPerPage]);
 
   const grouped = useMemo(() => {
     if (!isSuperAdmin) return {} as { [k: string]: { [l: string]: Vehicle[] } };
@@ -811,10 +815,15 @@ export default function Vehicles() {
     return Math.ceil(vehicleList.length / itemsPerPage);
   };
 
-  const handlePageChange = (page: number) => {
+  const handlePageChange = async (page: number) => {
     setCurrentPage(page);
     // Scroll to top when page changes
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Fetch data for the new page
+    if (dataFetchedRef.current) {
+      const statusFilter = activeTab === 'all' ? undefined : activeTab;
+      await fetchVehiclesWithPagination(page, statusFilter);
+    }
   };
 
   const handleItemsPerPageChange = (newItemsPerPage: number) => {

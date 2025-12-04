@@ -79,13 +79,13 @@ const navigation: NavItem[] = [
     title: "QR Scanner",
     href: "/dashboard/qr-scanner",
     icon: QrCode,
-    roles: ["attendant"],
+    roles: [],
   },
   {
     title: "Logs",
     href: "/dashboard/logs",
     icon: Activity,
-    roles: ["super_admin", "contractor", "attendant"],
+    roles: ["super_admin", "contractor"],
   },
   {
     title: "Income",
