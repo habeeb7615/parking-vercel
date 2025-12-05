@@ -41,12 +41,23 @@ interface AttendantIncome {
   this_month_revenue: number;
 }
 
+interface LocationIncome {
+  location_id: string;
+  location_name: string;
+  total_revenue: number;
+  today_revenue: number;
+  this_week_revenue: number;
+  this_month_revenue: number;
+  attendants: AttendantIncome[];
+}
+
 export default function Income() {
   const { profile } = useAuth();
   const [loading, setLoading] = useState(true);
   const [paymentStats, setPaymentStats] = useState<PaymentStats | null>(null);
   const [contractorIncomes, setContractorIncomes] = useState<ContractorIncome[]>([]);
   const [attendantIncomes, setAttendantIncomes] = useState<AttendantIncome[]>([]);
+  const [locationIncomes, setLocationIncomes] = useState<LocationIncome[]>([]);
   
   const isSuperAdmin = profile?.role === "super_admin";
   const isContractor = profile?.role === "contractor";
@@ -67,6 +78,11 @@ export default function Income() {
       
       // Fetch attendant-wise income
       await fetchAttendantIncome();
+      
+      // For contractors, fetch location-wise and attendant-wise income
+      if (isContractor && profile?.id) {
+        await fetchLocationWiseIncome();
+      }
       
     } catch (error) {
       console.error('Error fetching income data:', error);
@@ -259,6 +275,160 @@ export default function Income() {
     }
   };
 
+  const fetchLocationWiseIncome = async () => {
+    try {
+      if (!profile?.id) return;
+      
+      const { ContractorAPI } = await import('@/services/contractorApi');
+      const { VehicleAPI } = await import('@/services/vehicleApi');
+      const { LocationAPI } = await import('@/services/locationApi');
+      
+      // Get contractor data
+      const contractor = await ContractorAPI.getContractorByUserId(profile.id);
+      if (!contractor) {
+        setLocationIncomes([]);
+        return;
+      }
+      
+      // Get all locations for contractor
+      const locations = await LocationAPI.getContractorLocations(profile.id);
+      
+      // Get all vehicles for contractor using pagination
+      // Note: The API may already filter by contractor based on auth, but we'll filter client-side to be safe
+      const allVehicles: any[] = [];
+      let currentPage = 1;
+      let hasMore = true;
+      let consecutiveEmptyPages = 0;
+      
+      while (hasMore && consecutiveEmptyPages < 2) {
+        const response = await VehicleAPI.getVehiclesWithPagination({
+          curPage: currentPage,
+          perPage: 100,
+          sortBy: 'created_on',
+          direction: 'desc',
+          whereClause: []
+        });
+        
+        if (response.data && response.data.length > 0) {
+          consecutiveEmptyPages = 0;
+          // Filter vehicles for this contractor
+          const contractorVehicles = response.data.filter((v: any) => 
+            v.contractor_id === contractor.id
+          );
+          allVehicles.push(...contractorVehicles);
+          
+          if (currentPage >= response.totalPages) {
+            hasMore = false;
+          } else {
+            currentPage++;
+          }
+        } else {
+          consecutiveEmptyPages++;
+          if (currentPage >= response.totalPages) {
+            hasMore = false;
+          } else {
+            currentPage++;
+          }
+        }
+      }
+      
+      // Group vehicles by location and attendant
+      const locationIncomeMap = new Map<string, LocationIncome>();
+      
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      
+      // Initialize location income map
+      locations.forEach(location => {
+        locationIncomeMap.set(location.id, {
+          location_id: location.id,
+          location_name: location.locations_name,
+          total_revenue: 0,
+          today_revenue: 0,
+          this_week_revenue: 0,
+          this_month_revenue: 0,
+          attendants: []
+        });
+      });
+      
+      // Process vehicles and calculate income
+      allVehicles.forEach(vehicle => {
+        // Only count checked out vehicles with payment
+        if (!vehicle.check_out_time || !vehicle.payment_amount) return;
+        
+        const locationId = vehicle.location_id;
+        const locationIncome = locationIncomeMap.get(locationId);
+        if (!locationIncome) return;
+        
+        const attendantName = vehicle.attendant_name || vehicle.attendant?.name || 'Unknown Attendant';
+        const attendantId = vehicle.attendant?.id || vehicle.gate_in_id || 'unknown';
+        const paymentAmount = typeof vehicle.payment_amount === 'number' 
+          ? vehicle.payment_amount 
+          : parseFloat(String(vehicle.payment_amount)) || 0;
+        
+        const checkOutTime = new Date(vehicle.check_out_time);
+        
+        // Update location totals
+        locationIncome.total_revenue += paymentAmount;
+        if (checkOutTime >= today) {
+          locationIncome.today_revenue += paymentAmount;
+        }
+        if (checkOutTime >= weekAgo) {
+          locationIncome.this_week_revenue += paymentAmount;
+        }
+        if (checkOutTime >= monthStart) {
+          locationIncome.this_month_revenue += paymentAmount;
+        }
+        
+        // Find or create attendant income
+        let attendantIncome = locationIncome.attendants.find(a => 
+          a.attendant_id === attendantId || a.attendant_name === attendantName
+        );
+        
+        if (!attendantIncome) {
+          attendantIncome = {
+            attendant_id: attendantId,
+            attendant_name: attendantName,
+            total_revenue: 0,
+            today_revenue: 0,
+            this_week_revenue: 0,
+            this_month_revenue: 0
+          };
+          locationIncome.attendants.push(attendantIncome);
+        }
+        
+        // Update attendant totals
+        attendantIncome.total_revenue += paymentAmount;
+        if (checkOutTime >= today) {
+          attendantIncome.today_revenue += paymentAmount;
+        }
+        if (checkOutTime >= weekAgo) {
+          attendantIncome.this_week_revenue += paymentAmount;
+        }
+        if (checkOutTime >= monthStart) {
+          attendantIncome.this_month_revenue += paymentAmount;
+        }
+      });
+      
+      // Convert map to array and sort by location name
+      const locationIncomesArray = Array.from(locationIncomeMap.values())
+        .filter(loc => loc.total_revenue > 0 || loc.attendants.length > 0)
+        .sort((a, b) => a.location_name.localeCompare(b.location_name));
+      
+      // Sort attendants within each location by name
+      locationIncomesArray.forEach(location => {
+        location.attendants.sort((a, b) => a.attendant_name.localeCompare(b.attendant_name));
+      });
+      
+      setLocationIncomes(locationIncomesArray);
+    } catch (error) {
+      console.error('Error fetching location-wise income:', error);
+      setLocationIncomes([]);
+    }
+  };
+
 
   if (loading) {
     return (
@@ -352,11 +522,78 @@ export default function Income() {
             <CardHeader>
               <CardTitle>Contractor-wise Income</CardTitle>
               <CardDescription>
-                Revenue breakdown by contractor
+                {isContractor 
+                  ? "Revenue breakdown by location and attendant"
+                  : "Revenue breakdown by contractor"
+                }
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {contractorIncomes.length > 0 ? (
+              {isContractor && locationIncomes.length > 0 ? (
+                <div className="space-y-6">
+                  {locationIncomes.map((location) => (
+                    <div key={location.location_id} className="border rounded-lg p-4 bg-gray-50">
+                      {/* Location Header */}
+                      <div className="flex items-center justify-between mb-4 pb-3 border-b">
+                        <div>
+                          <h3 className="font-semibold text-lg text-gray-900">{location.location_name}</h3>
+                          <p className="text-sm text-muted-foreground mt-1">Location Total</p>
+                        </div>
+                        <span className="text-2xl font-bold text-green-600">
+                          {formatCurrency(location.total_revenue)}
+                        </span>
+                      </div>
+                      
+                      {/* Location Summary */}
+                      <div className="grid grid-cols-3 gap-4 text-sm mb-4 pb-4 border-b">
+                        <div>
+                          <p className="text-muted-foreground">Today</p>
+                          <p className="font-medium">{formatCurrency(location.today_revenue)}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">This Week</p>
+                          <p className="font-medium">{formatCurrency(location.this_week_revenue)}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground">This Month</p>
+                          <p className="font-medium">{formatCurrency(location.this_month_revenue)}</p>
+                        </div>
+                      </div>
+                      
+                      {/* Attendants within Location */}
+                      {location.attendants.length > 0 && (
+                        <div className="space-y-3 mt-4">
+                          <h4 className="font-medium text-sm text-gray-700 mb-3">Attendants</h4>
+                          {location.attendants.map((attendant) => (
+                            <div key={`${location.location_id}-${attendant.attendant_id}`} className="border rounded-lg p-3 bg-white ml-4">
+                              <div className="flex items-center justify-between mb-2">
+                                <h5 className="font-medium text-base">{attendant.attendant_name}</h5>
+                                <span className="text-lg font-bold text-blue-600">
+                                  {formatCurrency(attendant.total_revenue)}
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-3 gap-4 text-sm">
+                                <div>
+                                  <p className="text-muted-foreground text-xs">Today</p>
+                                  <p className="font-medium">{formatCurrency(attendant.today_revenue)}</p>
+                                </div>
+                                <div>
+                                  <p className="text-muted-foreground text-xs">This Week</p>
+                                  <p className="font-medium">{formatCurrency(attendant.this_week_revenue)}</p>
+                                </div>
+                                <div>
+                                  <p className="text-muted-foreground text-xs">This Month</p>
+                                  <p className="font-medium">{formatCurrency(attendant.this_month_revenue)}</p>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : contractorIncomes.length > 0 ? (
                 <div className="space-y-4">
                   {contractorIncomes.map((contractor) => (
                     <div key={contractor.contractor_id} className="border rounded-lg p-4">
