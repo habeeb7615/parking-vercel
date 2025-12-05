@@ -339,7 +339,7 @@ export default function Vehicles() {
                   
                   {!isAttendant && (
                     <div className="text-gray-600 truncate">
-                      {vehicle.attendant?.name || 'Unknown Attendant'}
+                      {vehicle.attendant_name || vehicle.attendant?.name || 'Unknown Attendant'}
                     </div>
                   )}
                   
@@ -437,7 +437,7 @@ export default function Vehicles() {
                   {!isAttendant && (
                     <div className="flex items-center space-x-1">
                       <span className="text-muted-foreground">Attendant:</span>
-                      <span className="truncate">{vehicle.attendant?.name || 'Unknown'}</span>
+                      <span className="truncate">{vehicle.attendant_name || vehicle.attendant?.name || 'Unknown'}</span>
                     </div>
                   )}
                   {!isAttendant && (

@@ -68,6 +68,7 @@ export interface Vehicle {
     email: string;
     phone_number: string;
   };
+  attendant_name?: string; // Direct attendant name from API response
 }
 
 export interface CreateVehicleData {
