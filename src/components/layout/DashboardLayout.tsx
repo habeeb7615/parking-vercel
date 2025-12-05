@@ -6,9 +6,10 @@ import { Navbar } from "./Navbar";
 import { Sidebar } from "./Sidebar";
 import { Toaster } from "@/components/ui/toaster";
 import { SubscriptionExpiryWarning } from "@/components/SubscriptionExpiryWarning";
+import { SubscriptionBlocked } from "@/components/SubscriptionBlocked";
 
 export function DashboardLayout() {
-  const { user, profile, loading } = useAuth();
+  const { user, profile, loading, subscriptionBlocked } = useAuth();
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   console.log('DashboardLayout: loading =', loading, 'user =', user?.id, 'profile =', profile?.id);
@@ -53,7 +54,19 @@ export function DashboardLayout() {
           <main className="flex-1 overflow-hidden">
             <div className="p-2 sm:p-3 lg:p-4 xl:p-6">
               <SubscriptionExpiryWarning className="mb-4" />
-              <Outlet />
+              {subscriptionBlocked ? (
+                <div className="flex items-center justify-center min-h-[60vh]">
+                  <SubscriptionBlocked 
+                    message={
+                      profile.role === 'attendant' 
+                        ? "Your contractor's subscription has expired. Please contact your contractor to recharge."
+                        : "Your subscription has expired. Please renew your subscription to continue using the service."
+                    } 
+                  />
+                </div>
+              ) : (
+                <Outlet />
+              )}
             </div>
           </main>
         </div>

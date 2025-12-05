@@ -28,6 +28,8 @@ interface AuthContextType {
   profile: Profile | null;
   session: { access_token: string } | null;
   loading: boolean;
+  subscriptionBlocked: boolean;
+  setSubscriptionBlocked: (blocked: boolean) => void;
   signIn: (email: string, password: string, role?: string) => Promise<ApiResponse>;
   signUp: (email: string, password: string, userData: Partial<Profile>) => Promise<ApiResponse>;
   signOut: () => Promise<void>;
@@ -50,6 +52,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [session, setSession] = useState<{ access_token: string } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [subscriptionBlocked, setSubscriptionBlocked] = useState(false);
   const { toast } = useToast();
 
   const fetchProfile = async (userId: string) => {
@@ -116,8 +119,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
       
       return { data: null, error: { code: 'PROFILE_NOT_FOUND', message: 'Profile not found' } };
-    } catch (error) {
+    } catch (error: any) {
       console.error('Fetch profile error:', error);
+      
+      // Check if error is subscription expiry from /profiles/getOne/ API
+      if (error?.statusCode === 403 && error?.message) {
+        const subscriptionExpiredPattern = /subscription.*(has.*expired|expired|renew|renewal)/i;
+        if (subscriptionExpiredPattern.test(error.message)) {
+          console.log('AuthContext: Subscription expiry detected from /profiles/getOne/ API');
+          setSubscriptionBlocked(true);
+          // Don't throw error, just set blocked state
+          return { data: null, error: { code: 'SUBSCRIPTION_EXPIRED', message: error.message } };
+        }
+      }
+      
       throw error;
     }
   };
@@ -237,6 +252,23 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         if (profileResult.data) {
           finalProfile = profileResult.data as Profile;
           setProfile(finalProfile);
+        } else if (profileResult.error?.code === 'SUBSCRIPTION_EXPIRED') {
+          // Even if subscription is expired, create a profile so user can be redirected to dashboard
+          // DashboardLayout will show the blocked message for both contractors and attendants
+          console.log('SignIn: Subscription expired, but creating profile for redirect');
+          const tempProfile: Profile = {
+            id: loginResponse.user.id,
+            user_name: loginResponse.user.user_name,
+            email: loginResponse.user.email,
+            role: loginResponse.user.role as Profile['role'],
+            status: 'active',
+            is_first_login: false,
+          };
+          finalProfile = tempProfile;
+          setProfile(tempProfile);
+          AuthAPI.setProfile(tempProfile);
+          // Ensure subscriptionBlocked is set for both contractors and attendants
+          setSubscriptionBlocked(true);
         }
       } catch (error) {
         console.log('SignIn: Profile fetch failed, using user data');
@@ -559,6 +591,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     profile,
     session,
     loading,
+    subscriptionBlocked,
+    setSubscriptionBlocked,
     signIn,
     signUp,
     signOut,
