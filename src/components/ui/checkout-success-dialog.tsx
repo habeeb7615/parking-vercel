@@ -12,6 +12,22 @@ interface Vehicle {
   payment_amount?: number;
   payment_method?: string;
   receipt_id?: string;
+  contractors?: {
+    company_name?: string;
+    contact_number?: string;
+    rates_2wheeler?: {
+      upTo2Hours?: number;
+      upTo6Hours?: number;
+      upTo12Hours?: number;
+      upTo24Hours?: number;
+    };
+    rates_4wheeler?: {
+      upTo2Hours?: number;
+      upTo6Hours?: number;
+      upTo12Hours?: number;
+      upTo24Hours?: number;
+    };
+  };
 }
 
 interface CheckoutSuccessDialogProps {
@@ -92,7 +108,7 @@ export function CheckoutSuccessDialog({
     }
     body {
       font-family: 'Courier New', monospace;
-      font-size: 11px;
+      font-size: 12px;
       width: 80mm;
       max-width: 80mm;
       min-width: 80mm;
@@ -101,62 +117,89 @@ export function CheckoutSuccessDialog({
       line-height: 1.3;
       display: block;
     }
-    .header {
+    .title {
       text-align: center;
-      border-bottom: 2px dashed #000;
-      padding-bottom: 8px;
+      font-weight: bold;
+      font-size: 18px;
+      margin: 0 0 4px 0;
+    }
+    .subtitle {
+      text-align: center;
       margin-bottom: 8px;
     }
-    .header h1 {
-      font-size: 16px;
-      margin: 4px 0;
-      font-weight: bold;
-    }
-    .header p {
-      font-size: 10px;
-      margin: 2px 0;
-    }
-    .receipt-info {
-      margin: 8px 0;
-    }
-    .receipt-row {
+    .top-row {
       display: flex;
       justify-content: space-between;
-      margin: 4px 0;
+      margin-bottom: 4px;
+      font-size: 12px;
+    }
+    .top-row span:first-child {
+      font-weight: bold;
+    }
+    .divider {
+      border: none;
+      border-top: 1px dashed #000;
+      margin: 6px 0 10px;
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 2px;
+      font-size: 12px;
+    }
+    .row span:first-child {
+      font-weight: bold;
+    }
+    .total-section {
+      margin: 12px 0;
+    }
+    .total-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 5px 0;
+      font-weight: bold;
+      font-size: 12px;
+    }
+    .total-divider-top,
+    .total-divider-bottom {
+      border: none;
+      border-top: 2px solid #000;
+      margin: 0;
+    }
+    .amount {
+      font-size: 16px;
+    }
+    .rates-title {
+      text-align: center;
+      margin: 6px 0;
+      font-weight: bold;
       font-size: 11px;
     }
-    .receipt-label {
-      font-weight: bold;
+    .rates {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      font-size: 10px;
+      gap: 20px;
     }
-    .receipt-value {
-      text-align: right;
+    .rates .col {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
     }
-    .separator {
-      border-top: 1px dashed #000;
-      margin: 8px 0;
+    .rates .col div {
+      margin-bottom: 2px;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
     }
-    .total {
-      border-top: 2px solid #000;
-      border-bottom: 2px solid #000;
-      padding: 8px 0;
-      margin: 8px 0;
-      text-align: center;
-    }
-    .total-label {
-      font-size: 12px;
-      font-weight: bold;
-      margin-bottom: 4px;
-    }
-    .total-amount {
-      font-size: 18px;
-      font-weight: bold;
+    .rates .col div span:first-child {
+      white-space: nowrap;
     }
     .footer {
       text-align: center;
-      margin-top: 10px;
-      padding-top: 8px;
-      border-top: 1px dashed #000;
-      font-size: 10px;
+      margin-top: 8px;
+      font-size: 12px;
     }
     @media print {
       @page {
@@ -175,69 +218,99 @@ export function CheckoutSuccessDialog({
         max-width: 80mm;
         min-width: 80mm;
         margin: 0 auto;
-        padding: 5mm;
+        padding: 2mm;
         display: inline-block;
         text-align: left;
+        font-size: 12px;
       }
     }
   </style>
 </head>
 <body>
-  <div class="header">
-    <h1>PARKFLOW</h1>
-    <p>Parking Receipt</p>
+  <h1 class="title">PARKFLOW</h1>
+  <div class="subtitle">Parking Receipt</div>
+  ${vehicle.contractors?.company_name || vehicle.contractors?.contact_number ? `
+  <div class="top-row">
+    <span>${vehicle.contractors?.company_name || ''}</span>
+    ${vehicle.contractors?.contact_number ? `<span>Contact: ${vehicle.contractors.contact_number}</span>` : ''}
+  </div>
+  <hr class="divider" />
+  ` : ''}
+  
+  <div class="row">
+    <span>Receipt No:</span>
+    <span>${receiptNumber}</span>
+  </div>
+  <div class="row">
+    <span>Date & Time:</span>
+    <span>${formatDateTime(checkoutDate)}</span>
+  </div>
+  <hr class="divider" />
+  <div class="row">
+    <span>Plate Number:</span>
+    <span>${vehicle.plate_number}</span>
+  </div>
+  <div class="row">
+    <span>Vehicle Type:</span>
+    <span>${vehicle.vehicle_type === '2-wheeler' ? '2 Wheeler' : '4 Wheeler'}</span>
+  </div>
+  <div class="row">
+    <span>Check In Time:</span>
+    <span>${formatTime(vehicle.check_in_time)}</span>
+  </div>
+  <div class="row">
+    <span>Check Out Time:</span>
+    <span>${vehicle.check_out_time ? formatTime(vehicle.check_out_time) : formatDateTime(checkoutDate)}</span>
+  </div>
+  <div class="row">
+    <span>Duration:</span>
+    <span>${duration}</span>
+  </div>
+  <div class="row">
+    <span>Payment Method:</span>
+    <span>${paymentMethod.charAt(0).toUpperCase() + paymentMethod.slice(1)}</span>
   </div>
   
-  <div class="receipt-info">
-    <div class="receipt-row">
-      <span class="receipt-label">Receipt No:</span>
-      <span class="receipt-value">${receiptNumber}</span>
+  <div class="total-section">
+    <hr class="total-divider-top" />
+    <div class="total-row">
+      <span>Total Amount</span>
+      <span class="amount">₹${paymentAmount.toFixed(2)}</span>
     </div>
-    <div class="receipt-row">
-      <span class="receipt-label">Date & Time:</span>
-      <span class="receipt-value">${formatDateTime(checkoutDate)}</span>
-    </div>
+    <hr class="total-divider-bottom" />
   </div>
   
-  <div class="separator"></div>
-  
-  <div class="receipt-info">
-    <div class="receipt-row">
-      <span class="receipt-label">Plate Number:</span>
-      <span class="receipt-value">${vehicle.plate_number}</span>
+  ${vehicle.contractors?.rates_2wheeler || vehicle.contractors?.rates_4wheeler ? `
+  <hr class="divider" />
+  <h3 class="rates-title">Parking Rates</h3>
+  <div class="rates">
+    ${vehicle.vehicle_type === '2-wheeler' && vehicle.contractors?.rates_2wheeler ? `
+    <div class="col">
+      <div><span>Up to 2 Hours:</span><span>₹${vehicle.contractors.rates_2wheeler.upTo2Hours || 0}</span></div>
+      <div><span>Up to 6 Hours:</span><span>₹${vehicle.contractors.rates_2wheeler.upTo6Hours || 0}</span></div>
     </div>
-    <div class="receipt-row">
-      <span class="receipt-label">Vehicle Type:</span>
-      <span class="receipt-value">${vehicle.vehicle_type === '2-wheeler' ? '2 Wheeler' : '4 Wheeler'}</span>
+    <div class="col">
+      <div><span>Up to 12 Hours:</span><span>₹${vehicle.contractors.rates_2wheeler.upTo12Hours || 0}</span></div>
+      <div><span>Up to 24 Hours:</span><span>₹${vehicle.contractors.rates_2wheeler.upTo24Hours || 0}</span></div>
     </div>
-    <div class="receipt-row">
-      <span class="receipt-label">Check In Time:</span>
-      <span class="receipt-value">${formatTime(vehicle.check_in_time)}</span>
+    ` : ''}
+    ${vehicle.vehicle_type === '4-wheeler' && vehicle.contractors?.rates_4wheeler ? `
+    <div class="col">
+      <div><span>Up to 2 Hours:</span><span>₹${vehicle.contractors.rates_4wheeler.upTo2Hours || 0}</span></div>
+      <div><span>Up to 6 Hours:</span><span>₹${vehicle.contractors.rates_4wheeler.upTo6Hours || 0}</span></div>
     </div>
-    <div class="receipt-row">
-      <span class="receipt-label">Check Out Time:</span>
-      <span class="receipt-value">${vehicle.check_out_time ? formatTime(vehicle.check_out_time) : formatDateTime(checkoutDate)}</span>
+    <div class="col">
+      <div><span>Up to 12 Hours:</span><span>₹${vehicle.contractors.rates_4wheeler.upTo12Hours || 0}</span></div>
+      <div><span>Up to 24 Hours:</span><span>₹${vehicle.contractors.rates_4wheeler.upTo24Hours || 0}</span></div>
     </div>
-    <div class="receipt-row">
-      <span class="receipt-label">Duration:</span>
-      <span class="receipt-value">${duration}</span>
-    </div>
-    <div class="receipt-row">
-      <span class="receipt-label">Payment Method:</span>
-      <span class="receipt-value">${paymentMethod.charAt(0).toUpperCase() + paymentMethod.slice(1)}</span>
-    </div>
+    ` : ''}
   </div>
-  
-  <div class="separator"></div>
-  
-  <div class="total">
-    <div class="total-label">Total Amount</div>
-    <div class="total-amount">₹${paymentAmount.toFixed(2)}</div>
-  </div>
+  <hr class="divider" />
+  ` : ''}
   
   <div class="footer">
-    <p>Thank you for using ParkFlow!</p>
-    <p>Please keep this receipt safe</p>
+    <div>Thank you for using ParkFlow!</div>
+    <div>Please keep this receipt safe</div>
   </div>
 </body>
 </html>

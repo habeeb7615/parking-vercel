@@ -1041,6 +1041,9 @@ export default function Vehicles() {
         duration: duration
       });
       
+      // Update selectedVehicle with response data (includes contractors data)
+      setSelectedVehicle(response);
+      
       // Close checkout dialog and show success dialog
       setShowCheckout(false);
       setShowSuccessDialog(true);
