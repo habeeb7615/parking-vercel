@@ -26,6 +26,28 @@ const getApiBaseURL = () => {
 
 const API_BASE_URL = getApiBaseURL();
 
+/**
+ * Handle 401 Unauthorized errors by clearing auth data and redirecting to login
+ */
+const handleUnauthorized = () => {
+  // Dynamically import AuthAPI to avoid circular dependencies
+  import('@/services/authApi').then(({ AuthAPI }) => {
+    console.log('401 Unauthorized detected - clearing auth data and redirecting to login');
+    AuthAPI.clearAllAuthData();
+    // Redirect to login page
+    window.location.href = '/login';
+  }).catch((error) => {
+    console.error('Error handling unauthorized:', error);
+    // Fallback: clear localStorage and redirect
+    try {
+      localStorage.clear();
+    } catch (e) {
+      console.error('Error clearing localStorage:', e);
+    }
+    window.location.href = '/login';
+  });
+};
+
 export interface ApiResponse<T = any> {
   success: boolean;
   statusCode: number;
@@ -111,6 +133,11 @@ class ApiClient {
         try {
           data = await response.json();
         } catch (jsonError) {
+          // If JSON parsing fails, check for 401 Unauthorized
+          if (response.status === 401) {
+            handleUnauthorized();
+          }
+          
           // If JSON parsing fails, create error from response
           const error: ApiError = {
             success: false,
@@ -123,6 +150,11 @@ class ApiClient {
           throw error;
         }
       } else {
+        // If not JSON, check for 401 Unauthorized
+        if (response.status === 401) {
+          handleUnauthorized();
+        }
+        
         // If not JSON, create error from status
         const error: ApiError = {
           success: false,
@@ -136,6 +168,11 @@ class ApiClient {
       }
 
       if (!response.ok) {
+        // Handle 401 Unauthorized - clear auth and redirect to login
+        if (response.status === 401) {
+          handleUnauthorized();
+        }
+        
         // Handle message as array or string
         let errorMessage = 'Request failed';
         if (data.message) {
