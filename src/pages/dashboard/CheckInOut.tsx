@@ -4,28 +4,24 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Progress } from "@/components/ui/progress";
+import { CheckoutDialog } from "@/components/ui/checkout-dialog";
+import { CheckoutSuccessDialog } from "@/components/ui/checkout-success-dialog";
+import { ConfirmCheckoutDialog } from "@/components/ui/confirm-checkout-dialog";
 import { 
   UserPlus, 
-  UserMinus, 
   Car, 
-  Clock, 
   MapPin, 
-  CheckCircle, 
   XCircle, 
-  AlertTriangle,
   Camera,
   ArrowRight,
   Bike,
-  Search,
-  Plus
+  Search
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { VehicleAPI, type Vehicle, type CreateVehicleData } from "@/services/vehicleApi";
 import { AttendantAPI } from "@/services/attendantApi";
 import { LocationAPI, type Location } from "@/services/locationApi";
+import { ContractorAPI } from "@/services/contractorApi";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatDateTime } from "@/utils/dateUtils";
 import { checkAttendantContractorSubscription } from "@/utils/subscriptionUtils";
@@ -61,13 +57,18 @@ export default function CheckInOut() {
   const [processing, setProcessing] = useState(false);
   
   // Check-out modal
-  const [showCheckOutModal, setShowCheckOutModal] = useState(false);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [showCheckout, setShowCheckout] = useState(false);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'digital' | 'free'>('cash');
+  const [contractorRates, setContractorRates] = useState<any>(null);
   
   // Success modal
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [checkoutAmount, setCheckoutAmount] = useState(0);
+  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
+  const [checkoutDetails, setCheckoutDetails] = useState<{
+    paymentAmount: number;
+    paymentMethod: string;
+    duration: string;
+  } | null>(null);
   
   // Search
   const [searchTerm, setSearchTerm] = useState("");
@@ -135,6 +136,35 @@ export default function CheckInOut() {
         location_id: location.id,
         contractor_id: location.contractor_id
       }));
+
+      // Fetch contractor rates for checkout calculation
+      if (location.contractor_id) {
+        try {
+          const contractor = await ContractorAPI.getContractorById(location.contractor_id);
+          if (contractor) {
+            let rates2w, rates4w;
+            try {
+              rates2w = typeof contractor.rates_2wheeler === 'string' 
+                ? JSON.parse(contractor.rates_2wheeler) 
+                : contractor.rates_2wheeler;
+              rates4w = typeof contractor.rates_4wheeler === 'string' 
+                ? JSON.parse(contractor.rates_4wheeler) 
+                : contractor.rates_4wheeler;
+            } catch (e) {
+              console.error('Error parsing rates:', e);
+              rates2w = contractor.rates_2wheeler ?? null;
+              rates4w = contractor.rates_4wheeler ?? null;
+            }
+            
+            setContractorRates({
+              rates_2wheeler: rates2w,
+              rates_4wheeler: rates4w
+            });
+          }
+        } catch (error) {
+          console.error('Error fetching contractor rates:', error);
+        }
+      }
 
       // Get vehicles for this location (parked vehicles only)
       const { VehicleAPI } = await import('@/services/vehicleApi');
@@ -294,11 +324,37 @@ export default function CheckInOut() {
     }
   };
 
-  const handleCheckOut = async () => {
-    if (!selectedVehicle) return;
+  const handleCheckoutClick = (vehicle: Vehicle) => {
+    console.log('CheckInOut: handleCheckoutClick called', { vehicle, contractorRates });
+    setSelectedVehicle(vehicle);
+    setShowConfirmDialog(true);
+  };
 
-    setProcessing(true);
+  const handleConfirmCheckout = () => {
+    console.log('CheckInOut: handleConfirmCheckout called', { selectedVehicle, contractorRates });
+    if (!contractorRates) {
+      console.error('CheckInOut: contractorRates is null, cannot open checkout dialog');
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Contractor rates not available. Please refresh the page.",
+      });
+      return;
+    }
+    setShowConfirmDialog(false);
+    setShowCheckout(true);
+  };
+
+  const handleCheckoutConfirm = async (data: { payment_amount: number; calculated_amount?: number; payment_method: string }) => {
+    console.log('CheckInOut: handleCheckoutConfirm called', { selectedVehicle, data });
+    if (!selectedVehicle) {
+      console.error('CheckInOut: selectedVehicle is null');
+      return;
+    }
+
     try {
+      setProcessing(true);
+      console.log('CheckInOut: Starting checkout API call...');
       // Store original check_in_time before checkout
       const originalCheckInTime = selectedVehicle.check_in_time;
       
@@ -306,29 +362,41 @@ export default function CheckInOut() {
       const now = new Date();
       const checkoutData = {
         check_out_time: now.toISOString(), // Already in UTC format (ISO 8601 with Z suffix)
-        payment_amount: 0, // Will be calculated by the API
-        payment_method: paymentMethod
+        payment_amount: data.payment_amount,
+        calculated_amount: data.calculated_amount, // Send calculated amount for tracking
+        payment_method: data.payment_method as 'cash' | 'card' | 'digital' | 'free'
       };
-
+      
       console.log('CheckInOut: Checkout data being sent:', {
         check_out_time: checkoutData.check_out_time,
         payment_amount: checkoutData.payment_amount,
+        calculated_amount: checkoutData.calculated_amount,
         original_check_in_time: originalCheckInTime
       });
-
-      await VehicleAPI.checkoutVehicle(selectedVehicle.id, checkoutData);
       
-      // Note: Backend should not update check_in_time, but if it does, 
-      // we'll detect it after refetching the data
+      const response = await VehicleAPI.checkoutVehicle(selectedVehicle.id, checkoutData);
       
-      // Calculate checkout amount for success modal
-      const duration = Math.floor((new Date().getTime() - new Date(selectedVehicle.check_in_time).getTime()) / (1000 * 60 * 60));
-      const amount = duration * 50;
-      setCheckoutAmount(amount);
+      // Calculate duration
+      const checkInTime = new Date(selectedVehicle.check_in_time);
+      const checkOutTime = new Date();
+      const durationMs = checkOutTime.getTime() - checkInTime.getTime();
+      const hours = Math.floor(durationMs / (1000 * 60 * 60));
+      const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((durationMs % (1000 * 60)) / 1000);
+      const duration = `${hours}h ${minutes}m ${seconds}s`;
       
-      setShowCheckOutModal(false);
-      setShowSuccessModal(true);
-      setSelectedVehicle(null);
+      // Set checkout details for success dialog
+      setCheckoutDetails({
+        paymentAmount: data.payment_amount,
+        paymentMethod: data.payment_method,
+        duration: duration
+      });
+      
+      // Update selectedVehicle with response data (includes receipt_id, contractors, etc.)
+      setSelectedVehicle(response);
+      
+      setShowCheckout(false);
+      setShowSuccessDialog(true);
       dataFetchedRef.current = false;
       fetchData(); // Refresh data
     } catch (error: any) {
@@ -342,27 +410,6 @@ export default function CheckInOut() {
       setProcessing(false);
     }
   };
-
-  const openCheckOutModal = (vehicle: Vehicle) => {
-    setSelectedVehicle(vehicle);
-    setPaymentMethod('cash');
-    setShowCheckOutModal(true);
-  };
-
-  // Calculate parking duration and amount for checkout modal (using useMemo to prevent hydration errors)
-  const checkoutCalculations = useMemo(() => {
-    if (!selectedVehicle || !selectedVehicle.check_in_time) {
-      return { duration: 0, amount: 0 };
-    }
-    
-    const checkInTime = new Date(selectedVehicle.check_in_time).getTime();
-    const currentTime = Date.now();
-    const durationMs = currentTime - checkInTime;
-    const durationHours = Math.floor(durationMs / (1000 * 60 * 60));
-    const amount = durationHours * 50;
-    
-    return { duration: durationHours, amount };
-  }, [selectedVehicle]);
 
   // Filter and paginate vehicles
   const filteredVehicles = vehicles.filter(vehicle => 
@@ -632,7 +679,7 @@ export default function CheckInOut() {
                           <div>
                             <Button
                               size="sm"
-                              onClick={() => openCheckOutModal(vehicle)}
+                              onClick={() => handleCheckoutClick(vehicle)}
                               className="bg-red-600 hover:bg-red-700 text-white w-full"
                             >
                               <ArrowRight className="h-3 w-3 mr-1" />
@@ -664,7 +711,7 @@ export default function CheckInOut() {
                           </div>
                           <Button
                             size="sm"
-                            onClick={() => openCheckOutModal(vehicle)}
+                            onClick={() => handleCheckoutClick(vehicle)}
                             className="bg-red-600 hover:bg-red-700 text-white text-xs px-3 py-1"
                           >
                             <ArrowRight className="h-3 w-3 mr-1" />
@@ -688,147 +735,43 @@ export default function CheckInOut() {
         </Card>
       </div>
 
-      {/* Check Out Modal */}
-      <Dialog open={showCheckOutModal} onOpenChange={setShowCheckOutModal}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center space-x-2 text-xl">
-              <UserMinus className="h-6 w-6" />
-              <span>Check Out Vehicle</span>
-            </DialogTitle>
-            <DialogDescription className="text-base">
-              Review parking details and complete payment
-            </DialogDescription>
-          </DialogHeader>
-          
-          {selectedVehicle && (
-            <div className="space-y-6">
-              {/* Vehicle Information Card */}
-              <div className="bg-gray-50 p-4 rounded-lg border">
-                <div className="flex items-center space-x-3">
-                  <Car className="h-8 w-8 text-gray-600" />
-                  <div>
-                    <p className="text-lg font-semibold">{selectedVehicle.plate_number}</p>
-                    <p className="text-sm text-gray-600">Type: {selectedVehicle.vehicle_type === '2-wheeler' ? '2-wheeler' : '4-wheeler'}</p>
-                    <p className="text-sm text-gray-600">
-                      Check In: {formatDateTime(selectedVehicle.check_in_time)}
-                    </p>
-                  </div>
-                </div>
-              </div>
+      {/* Confirm Checkout Dialog */}
+      <ConfirmCheckoutDialog
+        isOpen={showConfirmDialog}
+        onClose={() => {
+          setShowConfirmDialog(false);
+          setSelectedVehicle(null);
+        }}
+        onConfirm={handleConfirmCheckout}
+        vehicle={selectedVehicle}
+      />
 
-              {/* Parking Details Card */}
-              <div className="bg-gray-50 p-4 rounded-lg border">
-                <div className="flex items-center space-x-3 mb-3">
-                  <Clock className="h-5 w-5 text-gray-600" />
-                  <span className="font-semibold">Parking Details</span>
-                </div>
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Duration:</span>
-                    <span className="text-sm font-medium">
-                      {checkoutCalculations.duration}h
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Rate:</span>
-                    <span className="text-sm font-medium">Up to 6 hours: ₹50</span>
-                  </div>
-                  <div className="border-t pt-2 mt-2">
-                    <div className="flex justify-between">
-                      <span className="font-semibold">Total Amount:</span>
-                      <span className="text-lg font-bold text-green-600">
-                        ₹{checkoutCalculations.amount}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              
-              {/* Payment Method */}
-              <div className="space-y-2">
-                <Label htmlFor="payment_method" className="text-base font-medium">Payment Method</Label>
-                <select 
-                  id="payment_method"
-                  value={paymentMethod} 
-                  onChange={(e) => setPaymentMethod(e.target.value as any)}
-                  className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-parkflow-blue focus:border-transparent text-base"
-                >
-                  <option value="cash">Cash</option>
-                  <option value="card">Card</option>
-                  <option value="digital">Digital Payment</option>
-                  <option value="free">Free</option>
-                </select>
-              </div>
+      {/* Checkout Dialog */}
+      <CheckoutDialog
+        isOpen={showCheckout}
+        onClose={() => {
+          setShowCheckout(false);
+          setSelectedVehicle(null);
+        }}
+        onConfirm={handleCheckoutConfirm}
+        vehicle={selectedVehicle}
+        contractorRates={contractorRates}
+        loading={processing}
+      />
 
-              {/* Action Buttons */}
-              <div className="flex justify-end space-x-3 pt-4">
-                <Button 
-                  onClick={() => setShowCheckOutModal(false)} 
-                  variant="outline"
-                  disabled={processing}
-                  className="px-6 py-2"
-                >
-                  Cancel
-                </Button>
-                <Button 
-                  onClick={handleCheckOut} 
-                  className="bg-green-600 hover:bg-green-700 px-6 py-2"
-                  disabled={processing}
-                >
-                  {processing ? (
-                    <span className="flex items-center">
-                      <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></span>
-                      Processing...
-                    </span>
-                  ) : (
-                    'Confirm Checkout'
-                  )}
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Success Modal */}
-      <Dialog open={showSuccessModal} onOpenChange={setShowSuccessModal}>
-        <DialogContent className="max-w-md">
-          <div className="text-center space-y-6">
-            {/* Success Icon */}
-            <div className="flex justify-center">
-              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
-                <CheckCircle className="h-8 w-8 text-green-600" />
-              </div>
-            </div>
-
-            {/* Success Message */}
-            <div className="space-y-2">
-              <h3 className="text-2xl font-bold text-gray-900">Checkout Successful</h3>
-              <p className="text-gray-600">
-                Vehicle <span className="font-semibold">{selectedVehicle?.plate_number}</span> has been checked out.
-              </p>
-            </div>
-
-            {/* Payment Details */}
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <div className="space-y-2">
-                <p className="text-sm text-gray-600">Payment Due</p>
-                <p className="text-3xl font-bold text-blue-600">₹{checkoutAmount}</p>
-              </div>
-            </div>
-
-            {/* Done Button */}
-            <Button
-              onClick={() => setShowSuccessModal(false)}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 text-lg"
-            >
-              <CheckCircle className="h-5 w-5 mr-2" />
-              Done
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Checkout Success Dialog */}
+      <CheckoutSuccessDialog
+        isOpen={showSuccessDialog}
+        onClose={() => {
+          setShowSuccessDialog(false);
+          setCheckoutDetails(null);
+          setSelectedVehicle(null);
+        }}
+        vehicle={selectedVehicle}
+        paymentAmount={checkoutDetails?.paymentAmount || 0}
+        paymentMethod={checkoutDetails?.paymentMethod || ''}
+        duration={checkoutDetails?.duration || ''}
+      />
 
       {/* Image Check-in Dialog */}
       <ImageCheckInDialog

@@ -44,6 +44,7 @@ export function CheckoutDialog({
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [manualAmount, setManualAmount] = useState<string>('');
   const [useManualAmount, setUseManualAmount] = useState<boolean>(false);
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
   
   // State for calculation retry
   const [calculationRetryCount, setCalculationRetryCount] = useState(0);
@@ -51,6 +52,13 @@ export function CheckoutDialog({
   const [isCalculating, setIsCalculating] = useState(false);
   const calculationTimestampRef = useRef<number>(0);
   
+  // Reset processing state when dialog closes
+  useEffect(() => {
+    if (!isOpen) {
+      setIsProcessing(false);
+    }
+  }, [isOpen]);
+
   // Use useMemo to prevent hydration errors - only calculate when dialog is open and data is available
   const calculation = useMemo(() => {
     // Mark calculation start
@@ -326,6 +334,9 @@ export function CheckoutDialog({
     // Clear any previous errors
     setErrorMessage('');
     
+    // Set processing state immediately
+    setIsProcessing(true);
+    
     try {
       onConfirm({
         payment_amount: finalAmount,
@@ -335,6 +346,7 @@ export function CheckoutDialog({
     } catch (error) {
       console.error('CheckoutDialog: Error in handleConfirm', error);
       setErrorMessage('An error occurred. Please try again.');
+      setIsProcessing(false);
     }
   };
 
@@ -635,19 +647,20 @@ export function CheckoutDialog({
 
           {/* Action Buttons */}
           <div className="flex flex-col sm:flex-row justify-center gap-2 sm:gap-3 pt-3 sm:pt-4">
-            <Button variant="outline" onClick={onClose} disabled={loading} className="w-full sm:w-auto text-xs sm:text-sm h-9 sm:h-10">
+            <Button variant="outline" onClick={onClose} disabled={loading || isProcessing} className="w-full sm:w-auto text-xs sm:text-sm h-9 sm:h-10">
               Cancel
             </Button>
             <Button 
               onClick={handleConfirm} 
               disabled={
                 loading || 
+                isProcessing ||
                 (calculation.amount === 0 && paymentMethod !== 'free') ||
                 (useManualAmount && (!manualAmount || parseFloat(manualAmount || '0') < 0))
               }
               className="bg-green-600 hover:bg-green-700 w-full sm:w-auto text-xs sm:text-sm h-9 sm:h-10"
             >
-              {loading ? 'Processing...' : 'Confirm Checkout'}
+              {(loading || isProcessing) ? 'Processing...' : 'Confirm Checkout'}
             </Button>
           </div>
         </div>
