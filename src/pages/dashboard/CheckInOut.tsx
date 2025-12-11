@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { CheckoutDialog } from "@/components/ui/checkout-dialog";
 import { CheckoutSuccessDialog } from "@/components/ui/checkout-success-dialog";
 import { ConfirmCheckoutDialog } from "@/components/ui/confirm-checkout-dialog";
+import { OTPVerificationDialog } from "@/components/ui/otp-verification-dialog";
 import { 
   UserPlus, 
   Car, 
@@ -26,6 +27,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { formatDateTime } from "@/utils/dateUtils";
 import { checkAttendantContractorSubscription } from "@/utils/subscriptionUtils";
 import { ImageCheckInDialog } from "@/components/vehicle/ImageCheckInDialog";
+import { QRTicketDialog } from "@/components/vehicle/QRTicketDialog";
 
 interface CheckInForm {
   plate_number: string;
@@ -62,6 +64,9 @@ export default function CheckInOut() {
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [contractorRates, setContractorRates] = useState<any>(null);
   
+  // OTP Verification
+  const [showOTPDialog, setShowOTPDialog] = useState(false);
+  
   // Success modal
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [checkoutDetails, setCheckoutDetails] = useState<{
@@ -77,6 +82,10 @@ export default function CheckInOut() {
   const [showImageCheckIn, setShowImageCheckIn] = useState(false);
   const [locations, setLocations] = useState<Location[]>([]);
   const [mobileNumberError, setMobileNumberError] = useState<string>('');
+  
+  // QR Ticket dialog
+  const [showQRTicket, setShowQRTicket] = useState(false);
+  const [qrTicketVehicle, setQrTicketVehicle] = useState<Vehicle | null>(null);
 
   // Track if data has been fetched to prevent unnecessary refreshes
   const dataFetchedRef = useRef(false);
@@ -308,9 +317,13 @@ export default function CheckInOut() {
       dataFetchedRef.current = false;
       fetchData();
       
+      // Show QR ticket dialog
+      setQrTicketVehicle(vehicle);
+      setShowQRTicket(true);
+      
       toast({
         title: "Vehicle Checked In",
-        description: `Vehicle ${vehicle.plate_number} has been checked in successfully.`,
+        description: `Vehicle ${vehicle.plate_number} has been checked in successfully. QR ticket generated.`,
       });
     } catch (error: any) {
       console.error('Error adding vehicle:', error);
@@ -327,7 +340,48 @@ export default function CheckInOut() {
   const handleCheckoutClick = (vehicle: Vehicle) => {
     console.log('CheckInOut: handleCheckoutClick called', { vehicle, contractorRates });
     setSelectedVehicle(vehicle);
-    setShowConfirmDialog(true);
+    // Show OTP dialog first instead of confirm dialog
+    setShowOTPDialog(true);
+  };
+
+  // Handle OTP verification
+  const handleOTPVerify = async (otp: string): Promise<boolean> => {
+    if (!selectedVehicle) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Vehicle information is missing.",
+      });
+      return false;
+    }
+
+    try {
+      const isValid = await VehicleAPI.verifyOTP(selectedVehicle.id, otp);
+      if (isValid) {
+        // OTP verified successfully, proceed to confirm checkout
+        if (!contractorRates) {
+          console.error('CheckInOut: contractorRates is null, cannot open checkout dialog');
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: "Contractor rates not available. Please refresh the page.",
+          });
+          return false;
+        }
+        setShowOTPDialog(false);
+        setShowConfirmDialog(true);
+        return true;
+      }
+      return false;
+    } catch (error: any) {
+      console.error('OTP verification error:', error);
+      toast({
+        variant: "destructive",
+        title: "OTP Verification Failed",
+        description: error.message || "Failed to verify OTP. Please try again.",
+      });
+      return false;
+    }
   };
 
   const handleConfirmCheckout = () => {
@@ -735,6 +789,14 @@ export default function CheckInOut() {
         </Card>
       </div>
 
+      {/* OTP Verification Dialog */}
+      <OTPVerificationDialog
+        open={showOTPDialog}
+        onOpenChange={setShowOTPDialog}
+        onVerify={handleOTPVerify}
+        vehiclePlateNumber={selectedVehicle?.plate_number}
+      />
+
       {/* Confirm Checkout Dialog */}
       <ConfirmCheckoutDialog
         isOpen={showConfirmDialog}
@@ -778,6 +840,15 @@ export default function CheckInOut() {
         isOpen={showImageCheckIn}
         onClose={() => setShowImageCheckIn(false)}
         onPlateDetected={handlePlateDetected}
+      />
+
+      {/* QR Ticket Dialog */}
+      <QRTicketDialog
+        open={showQRTicket}
+        onOpenChange={setShowQRTicket}
+        vehicle={qrTicketVehicle}
+        location={currentLocation}
+        gateName={currentLocation?.locations_name || 'Main Gate'}
       />
     </div>
   );

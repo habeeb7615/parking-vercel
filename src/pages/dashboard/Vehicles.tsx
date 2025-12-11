@@ -10,6 +10,7 @@ import { CheckoutDialog } from "@/components/ui/checkout-dialog";
 import { CheckoutSuccessDialog } from "@/components/ui/checkout-success-dialog";
 import { ConfirmCheckoutDialog } from "@/components/ui/confirm-checkout-dialog";
 import { ConfirmCheckinDialog } from "@/components/ui/confirm-checkin-dialog";
+import { OTPVerificationDialog } from "@/components/ui/otp-verification-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Car, Trash2, Plus, Camera, Car as CarIcon, Bike, ChevronLeft, ChevronRight, Search } from "lucide-react";
@@ -52,6 +53,7 @@ export default function Vehicles() {
   const [showConfirmCheckin, setShowConfirmCheckin] = useState(false);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [contractorRates, setContractorRates] = useState<any>(null);
+  const [showOTPDialog, setShowOTPDialog] = useState(false);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [checkoutDetails, setCheckoutDetails] = useState<{
     paymentAmount: number;
@@ -947,7 +949,48 @@ export default function Vehicles() {
   const handleCheckoutClick = (vehicle: Vehicle) => {
     console.log('Vehicles: handleCheckoutClick called', { vehicle, contractorRates });
     setSelectedVehicle(vehicle);
-    setShowConfirmDialog(true);
+    // Show OTP dialog first instead of confirm dialog
+    setShowOTPDialog(true);
+  };
+
+  // Handle OTP verification
+  const handleOTPVerify = async (otp: string): Promise<boolean> => {
+    if (!selectedVehicle) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Vehicle information is missing.",
+      });
+      return false;
+    }
+
+    try {
+      const isValid = await VehicleAPI.verifyOTP(selectedVehicle.id, otp);
+      if (isValid) {
+        // OTP verified successfully, proceed to confirm checkout
+        if (!contractorRates) {
+          console.error('Vehicles: contractorRates is null, cannot open checkout dialog');
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: "Contractor rates not available. Please refresh the page.",
+          });
+          return false;
+        }
+        setShowOTPDialog(false);
+        setShowConfirmDialog(true);
+        return true;
+      }
+      return false;
+    } catch (error: any) {
+      console.error('OTP verification error:', error);
+      toast({
+        variant: "destructive",
+        title: "OTP Verification Failed",
+        description: error.message || "Failed to verify OTP. Please try again.",
+      });
+      return false;
+    }
   };
 
   const handleConfirmCheckout = () => {
@@ -1409,6 +1452,14 @@ export default function Vehicles() {
           onClose={() => setShowCamera(false)}
         />
       )}
+
+      {/* OTP Verification Dialog */}
+      <OTPVerificationDialog
+        open={showOTPDialog}
+        onOpenChange={setShowOTPDialog}
+        onVerify={handleOTPVerify}
+        vehiclePlateNumber={selectedVehicle?.plate_number}
+      />
 
       {/* Confirm Checkout Dialog */}
       <ConfirmCheckoutDialog

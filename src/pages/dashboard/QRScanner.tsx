@@ -9,22 +9,33 @@ import { QrCode, Camera, CheckCircle, XCircle, AlertTriangle, Car, Clock, MapPin
 import { useToast } from "@/hooks/use-toast";
 import { VehicleAPI } from "@/services/vehicleApi";
 import { AttendantAPI } from "@/services/attendantApi";
+import { LocationAPI } from "@/services/locationApi";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatDateTime } from "@/utils/dateUtils";
 import { checkAttendantContractorSubscription } from "@/utils/subscriptionUtils";
+import { useNavigate } from "react-router-dom";
 
 interface QRData {
-  type: 'vehicle_entry' | 'vehicle_exit';
+  type?: 'vehicle_entry' | 'vehicle_exit';
   plate_number?: string;
   vehicle_type?: string;
   location_id?: string;
   vehicle_id?: string;
-  timestamp: string;
+  timestamp?: string;
+  // New QR ticket format
+  ticketId?: string;
+  plateNumber?: string;
+  checkInTime?: string;
+  locationId?: string;
+  locationName?: string;
+  gateName?: string;
+  vehicleType?: '2-wheeler' | '4-wheeler';
 }
 
 export default function QRScanner() {
   const { profile, user } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isScanning, setIsScanning] = useState(false);
@@ -96,12 +107,66 @@ export default function QRScanner() {
     setIsScanning(false);
   };
 
-  const processQRCode = (qrData: string) => {
+  const processQRCode = async (qrData: string) => {
     try {
       const data: QRData = JSON.parse(qrData);
-      setScannedData(data);
-      setShowResult(true);
-      stopCamera();
+      
+      // Handle new QR ticket format (from QRTicketDialog)
+      if (data.ticketId) {
+        setLoading(true);
+        try {
+          // Fetch vehicle by ticket ID
+          const vehicle = await VehicleAPI.getVehicleById(data.ticketId);
+          
+          if (!vehicle) {
+            throw new Error('Vehicle not found');
+          }
+
+          // Check if vehicle is already checked out
+          if (vehicle.check_out_time) {
+            toast({
+              variant: "destructive",
+              title: "Already Checked Out",
+              description: `Vehicle ${vehicle.plate_number} has already been checked out.`,
+            });
+            setLoading(false);
+            return;
+          }
+
+          // Convert to QRData format for display
+          const qrDataFormatted: QRData = {
+            type: 'vehicle_exit',
+            vehicle_id: vehicle.id,
+            plate_number: vehicle.plate_number,
+            vehicle_type: vehicle.vehicle_type,
+            location_id: vehicle.location_id,
+            timestamp: vehicle.check_in_time,
+            ticketId: vehicle.id,
+            plateNumber: vehicle.plate_number,
+            checkInTime: vehicle.check_in_time,
+            locationId: vehicle.location_id,
+            vehicleType: vehicle.vehicle_type
+          };
+          
+          setScannedData(qrDataFormatted);
+          setShowResult(true);
+          stopCamera();
+        } catch (error: any) {
+          console.error('Error fetching vehicle:', error);
+          toast({
+            variant: "destructive",
+            title: "Vehicle Not Found",
+            description: error.message || "Could not find vehicle with this ticket ID.",
+          });
+        } finally {
+          setLoading(false);
+        }
+      } else {
+        // Handle old format
+        setScannedData(data);
+        setShowResult(true);
+        stopCamera();
+      }
     } catch (error) {
       console.error('Error parsing QR code:', error);
       toast({
@@ -128,18 +193,32 @@ export default function QRScanner() {
   const handleVehicleAction = async () => {
     if (!scannedData || !user?.id) return;
 
+    // If QR ticket format, navigate to checkout page
+    if (scannedData.ticketId && scannedData.type === 'vehicle_exit') {
+      // Navigate to CheckInOut page - the vehicle will be auto-selected there
+      navigate('/dashboard/check-inout', { 
+        state: { vehicleId: scannedData.vehicle_id || scannedData.ticketId } 
+      });
+      setShowResult(false);
+      setScannedData(null);
+      return;
+    }
+
     setLoading(true);
     try {
       if (scannedData.type === 'vehicle_entry') {
         // Handle vehicle check-in
+        // First, fetch location to get contractor_id
+        const location = await LocationAPI.getLocationById(scannedData.location_id!);
+        
         const vehicleData = {
           plate_number: scannedData.plate_number!,
           vehicle_type: scannedData.vehicle_type as '2-wheeler' | '4-wheeler',
           location_id: scannedData.location_id!,
-          contractor_id: '', // Will be filled by the API
+          contractor_id: location.contractor_id,
         };
 
-        await VehicleAPI.checkInVehicle(vehicleData);
+        await VehicleAPI.createVehicle(vehicleData);
         toast({
           title: "Vehicle Checked In",
           description: `Vehicle ${scannedData.plate_number} has been checked in successfully.`,
